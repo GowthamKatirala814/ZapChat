@@ -78,6 +78,41 @@ public class AuthController : ControllerBase
 
         return Ok(response);
     }
+    [HttpGet("users/{id}")]
+    public async Task<IActionResult> GetUser(
+    Guid id)
+    {
+        var user =
+            await _context.Users
+                .Where(x => x.Id == id)
+                .Select(x => new
+                {
+                    x.Id,
+                    x.FullName,
+                    x.Email
+                })
+                .FirstOrDefaultAsync();
+
+        if (user == null)
+            return NotFound();
+
+        return Ok(user);
+    }
+
+    [HttpGet("users")]
+    public async Task<IActionResult> GetUsers()
+    {
+        var users = await _context.Users
+            .Select(x => new
+            {
+                x.Id,
+                x.FullName,
+                x.Email
+            })
+            .ToListAsync();
+
+        return Ok(users);
+    }
 
     [HttpPost("login")]
     public async Task<IActionResult> Login(LoginRequest request)

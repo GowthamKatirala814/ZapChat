@@ -6,17 +6,37 @@ var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddControllers();
 
+builder.Services.AddSignalR();
+
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen();
 
-builder.Services.AddDbContext<PrivateChatDbContext>(options =>
+builder.Services.AddCors(options =>
 {
-    options.UseSqlServer(
-        builder.Configuration.GetConnectionString(
-            "DefaultConnection"));
+    options.AddPolicy(
+        "AllowFrontend",
+        policy =>
+        {
+            policy
+                .WithOrigins(
+                    "http://localhost:5173"
+                )
+                .AllowAnyHeader()
+                .AllowAnyMethod()
+                .AllowCredentials();
+        });
 });
-builder.Services.AddSignalR();
+
+builder.Services.AddDbContext<PrivateChatDbContext>(
+    options =>
+    {
+        options.UseSqlServer(
+            builder.Configuration
+                .GetConnectionString(
+                    "DefaultConnection"));
+    });
+
 var app = builder.Build();
 
 if (app.Environment.IsDevelopment())
@@ -28,8 +48,15 @@ if (app.Environment.IsDevelopment())
 
 app.UseHttpsRedirection();
 
+app.UseCors(
+    "AllowFrontend"
+);
+
 app.UseAuthorization();
 
 app.MapControllers();
-app.MapHub<PrivateChatHub>("/privateChatHub");
+
+app.MapHub<PrivateChatHub>(
+    "/privateChatHub");
+
 app.Run();
