@@ -31,9 +31,18 @@ namespace Poll.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<Guid?>("CreatorId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("Downvotes")
+                        .HasColumnType("int");
+
                     b.Property<string>("Question")
                         .IsRequired()
                         .HasColumnType("nvarchar(max)");
+
+                    b.Property<int>("Upvotes")
+                        .HasColumnType("int");
 
                     b.HasKey("Id");
 
@@ -63,6 +72,29 @@ namespace Poll.Infrastructure.Persistence.Migrations
                     b.ToTable("PollOptions");
                 });
 
+            modelBuilder.Entity("Poll.Domain.Entities.PollReaction", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<bool>("IsUpvote")
+                        .HasColumnType("bit");
+
+                    b.Property<Guid>("PollId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("ReactedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("PollReactions");
+                });
+
             modelBuilder.Entity("Poll.Domain.Entities.PollVote", b =>
                 {
                     b.Property<Guid>("Id")
@@ -89,12 +121,17 @@ namespace Poll.Infrastructure.Persistence.Migrations
             modelBuilder.Entity("Poll.Domain.Entities.PollOption", b =>
                 {
                     b.HasOne("Poll.Domain.Entities.Poll", "Poll")
-                        .WithMany()
+                        .WithMany("Options")
                         .HasForeignKey("PollId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired();
 
                     b.Navigation("Poll");
+                });
+
+            modelBuilder.Entity("Poll.Domain.Entities.Poll", b =>
+                {
+                    b.Navigation("Options");
                 });
 #pragma warning restore 612, 618
         }

@@ -1,4 +1,4 @@
-﻿namespace Poll.Application.DTOs;
+namespace Poll.Application.DTOs;
 
 public class CreatePollRequest
 {
@@ -7,4 +7,6 @@ public class CreatePollRequest
 
     public List<string> Options { get; set; }
         = new();
+
+    public Guid CreatorId { get; set; }
 }

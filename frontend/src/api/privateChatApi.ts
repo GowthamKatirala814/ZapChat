@@ -1,4 +1,4 @@
-import { api }
+import { privateChatApiClient }
     from "./client";
 
 export const createConversation =
@@ -8,7 +8,7 @@ export const createConversation =
     ) => {
 
         const response =
-            await api.post(
+            await privateChatApiClient.post(
                 `/api/privatechat/conversation?user1Id=${user1Id}&user2Id=${user2Id}`
             );
 
@@ -21,7 +21,7 @@ export const getConversation =
     ) => {
 
         const response =
-            await api.get(
+            await privateChatApiClient.get(
                 `/api/privatechat/conversation/${conversationId}`
             );
 

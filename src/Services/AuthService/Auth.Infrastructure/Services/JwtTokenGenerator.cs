@@ -16,20 +16,23 @@ public class JwtTokenGenerator : IJwtTokenGenerator
         _configuration = configuration;
     }
 
-    public string GenerateToken(Guid userId, string email, List<string> roles)
+    public string GenerateToken(
+        Guid userId,
+        string email,
+        string anonymousName,
+        List<string> roles)
     {
         var claims = new List<Claim>
-{
-    new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
-
-    new Claim(ClaimTypes.Email, email),
-
-    new Claim(JwtRegisteredClaimNames.Sub, userId.ToString())
-};
+        {
+            new Claim(ClaimTypes.NameIdentifier, userId.ToString()),
+            new Claim(ClaimTypes.Email, email),
+            new Claim(JwtRegisteredClaimNames.Sub, userId.ToString()),
+            // Custom claim — readable by all services without a DB call
+            new Claim("anonymousName", anonymousName)
+        };
 
         claims.AddRange(
-            roles.Select(role =>
-                new Claim(ClaimTypes.Role, role)));
+            roles.Select(role => new Claim(ClaimTypes.Role, role)));
 
         var key = new SymmetricSecurityKey(
             Encoding.UTF8.GetBytes(
@@ -48,7 +51,6 @@ public class JwtTokenGenerator : IJwtTokenGenerator
                     _configuration["JwtSettings:ExpiryMinutes"])),
             signingCredentials: credentials);
 
-        return new JwtSecurityTokenHandler()
-            .WriteToken(token);
+        return new JwtSecurityTokenHandler().WriteToken(token);
     }
 }

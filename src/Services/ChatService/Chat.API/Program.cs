@@ -18,6 +18,7 @@ builder.Services.AddControllers()
             ReferenceHandler.IgnoreCycles;
     });
 
+builder.Services.AddHttpClient();
 builder.Services.AddEndpointsApiExplorer();
 
 builder.Services.AddSwaggerGen();
@@ -51,7 +52,7 @@ builder.Services.AddHttpClient<
     NotificationService>(client =>
     {
         client.BaseAddress =
-            new Uri("https://localhost:7089/");
+            new Uri("http://localhost:5262/");
     });
 
 builder.Services.AddAuthentication(
@@ -107,10 +108,6 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
-
-app.UseHttpsRedirection();
-
-app.UseStaticFiles();
 
 app.UseCors("AllowFrontend");
 

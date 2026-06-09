@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Poll.Domain.Entities;
 
 namespace Poll.Infrastructure.Persistence.DbContexts;
@@ -19,4 +19,7 @@ public class PollDbContext : DbContext
 
     public DbSet<PollVote> PollVotes
         => Set<PollVote>();
+
+    public DbSet<PollReaction> PollReactions
+        => Set<PollReaction>();
 }

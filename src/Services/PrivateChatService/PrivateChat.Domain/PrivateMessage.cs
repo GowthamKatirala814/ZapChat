@@ -8,11 +8,28 @@ public class PrivateMessage
 
     public Guid SenderId { get; set; }
 
-    public string Content { get; set; }
-        = string.Empty;
+    /// <summary>Anonymous display name at time of send — never a real name.</summary>
+    public string SenderName { get; set; } = string.Empty;
+
+    public string Content { get; set; } = string.Empty;
 
     public bool IsRead { get; set; }
 
-    public DateTime SentAt { get; set; }
-        = DateTime.UtcNow;
+    public DateTime SentAt { get; set; } = DateTime.UtcNow;
+
+    public Guid? ParentMessageId { get; set; }
+
+    public PrivateMessage? ParentMessage { get; set; }
+
+    public ICollection<PrivateMessage> Replies { get; set; }
+        = new List<PrivateMessage>();
+
+    public ICollection<PrivateMessageReaction> Reactions { get; set; }
+        = new List<PrivateMessageReaction>();
+
+    public string? AttachmentUrl { get; set; }
+
+    public string? AttachmentType { get; set; }
+
+    public string? FileName { get; set; }
 }

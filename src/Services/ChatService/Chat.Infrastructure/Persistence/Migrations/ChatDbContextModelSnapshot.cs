@@ -56,6 +56,12 @@ namespace Chat.Infrastructure.Persistence.Migrations
                         .HasMaxLength(100)
                         .HasColumnType("nvarchar(100)");
 
+                    b.Property<string>("AttachmentType")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("AttachmentUrl")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("ChatRoomId")
                         .HasColumnType("uniqueidentifier");
 
@@ -63,6 +69,9 @@ namespace Chat.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
+
+                    b.Property<string>("FileName")
+                        .HasColumnType("nvarchar(max)");
 
                     b.Property<Guid?>("ParentMessageId")
                         .HasColumnType("uniqueidentifier");

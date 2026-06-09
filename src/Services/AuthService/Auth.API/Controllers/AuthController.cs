@@ -67,11 +67,13 @@ public class AuthController : ControllerBase
         var token = _jwtTokenGenerator.GenerateToken(
             user.Id,
             user.Email,
+            anonymousProfile.AnonymousName,
             new List<string>());
 
-        var response = new AuthResponse
+        var response = new
         {
             Token = token,
+            UserId = user.Id,
             Email = user.Email,
             AnonymousName = anonymousProfile.AnonymousName
         };
@@ -79,19 +81,19 @@ public class AuthController : ControllerBase
         return Ok(response);
     }
     [HttpGet("users/{id}")]
-    public async Task<IActionResult> GetUser(
-    Guid id)
+    public async Task<IActionResult> GetUser(Guid id)
     {
-        var user =
-            await _context.Users
-                .Where(x => x.Id == id)
-                .Select(x => new
-                {
-                    x.Id,
-                    x.FullName,
-                    x.Email
-                })
-                .FirstOrDefaultAsync();
+        var user = await _context.Users
+            .Where(x => x.Id == id)
+            .Select(x => new
+            {
+                x.Id,
+                AnonymousName = _context.AnonymousProfiles
+                    .Where(a => a.UserId == x.Id)
+                    .Select(a => a.AnonymousName)
+                    .FirstOrDefault() ?? "Anonymous"
+            })
+            .FirstOrDefaultAsync();
 
         if (user == null)
             return NotFound();
@@ -106,8 +108,10 @@ public class AuthController : ControllerBase
             .Select(x => new
             {
                 x.Id,
-                x.FullName,
-                x.Email
+                AnonymousName = _context.AnonymousProfiles
+                    .Where(a => a.UserId == x.Id)
+                    .Select(a => a.AnonymousName)
+                    .FirstOrDefault() ?? "Anonymous"
             })
             .ToListAsync();
 
@@ -138,16 +142,19 @@ public class AuthController : ControllerBase
         var anonymousProfile = await _context.AnonymousProfiles
             .FirstOrDefaultAsync(x => x.UserId == user.Id);
 
+        var anonName = anonymousProfile?.AnonymousName ?? "Anonymous";
+
         var token = _jwtTokenGenerator.GenerateToken(
             user.Id,
             user.Email,
+            anonName,
             new List<string>());
 
-        var response = new AuthResponse
+        var response = new
         {
             Token = token,
-            Email = user.Email,
-            AnonymousName = anonymousProfile?.AnonymousName ?? "Anonymous"
+            UserId = user.Id,
+            AnonymousName = anonName
         };
 
         return Ok(response);
