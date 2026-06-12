@@ -70,11 +70,23 @@ namespace Chat.Infrastructure.Persistence.Migrations
                         .HasMaxLength(2000)
                         .HasColumnType("nvarchar(2000)");
 
+                    b.Property<DateTime?>("DeletedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("FileName")
                         .HasColumnType("nvarchar(max)");
 
+                    b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsRemoved")
+                        .HasColumnType("bit");
+
                     b.Property<Guid?>("ParentMessageId")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime?>("RemovedAt")
+                        .HasColumnType("datetime2");
 
                     b.Property<DateTime>("SentAt")
                         .HasColumnType("datetime2");

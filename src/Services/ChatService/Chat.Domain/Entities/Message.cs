@@ -31,4 +31,12 @@ public class Message
     public string? AttachmentType { get; set; }
 
     public string? FileName { get; set; }
+
+    public bool IsRemoved { get; set; } = false;
+
+    public DateTime? RemovedAt { get; set; }
+
+    public bool IsDeleted { get; set; } = false;
+
+    public DateTime? DeletedAt { get; set; }
 }

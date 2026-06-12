@@ -2,12 +2,10 @@ import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import {
     Bell,
-    Search,
     LogOut,
     ChevronDown,
     Hash,
     Users,
-    Settings,
 } from "lucide-react";
 import type { RootState, AppDispatch } from "../store/store";
 import { setNotifications, addNotification } from "../store/notificationSlice";
@@ -31,8 +29,6 @@ export default function AppHeader({ title, memberCount, subtitle }: Props) {
     const dispatch = useDispatch<AppDispatch>();
     const [bellOpen, setBellOpen]       = useState(false);
     const [profileOpen, setProfileOpen] = useState(false);
-    const [searchQuery, setSearchQuery] = useState("");
-    const [searchFocused, setSearchFocused] = useState(false);
 
     const profileRef = useRef<HTMLDivElement>(null);
     const bellRef    = useRef<HTMLDivElement>(null);
@@ -131,65 +127,9 @@ export default function AppHeader({ title, memberCount, subtitle }: Props) {
                 </div>
             </div>
 
-            {/* ── CENTER: Search bar ───────────────────────────────── */}
-            <div className="flex-1 max-w-sm hidden md:block">
-                <div className="relative">
-                    <Search
-                        size={13}
-                        className="absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none"
-                        style={{ color: searchFocused ? "#06b6d4" : "#475569" }}
-                    />
-                    <input
-                        type="text"
-                        value={searchQuery}
-                        onChange={e => setSearchQuery(e.target.value)}
-                        onFocus={() => setSearchFocused(true)}
-                        onBlur={() => setSearchFocused(false)}
-                        placeholder="Search messages…"
-                        className="w-full pl-9 pr-10 py-2 rounded-lg text-sm outline-none transition-all duration-200"
-                        style={{
-                            background: "rgba(255,255,255,0.05)",
-                            border: searchFocused
-                                ? "1px solid rgba(6,182,212,0.5)"
-                                : "1px solid rgba(255,255,255,0.07)",
-                            color: "#e2e8f0",
-                            caretColor: "#06b6d4",
-                            boxShadow: searchFocused ? "0 0 0 3px rgba(6,182,212,0.08)" : "none",
-                        }}
-                    />
-                    {/* Keyboard shortcut hint */}
-                    <kbd
-                        className="absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] px-1.5 py-0.5 rounded pointer-events-none hidden lg:block"
-                        style={{
-                            background: "rgba(255,255,255,0.06)",
-                            color: "#475569",
-                            border: "1px solid rgba(255,255,255,0.08)",
-                        }}
-                    >
-                        ⌘K
-                    </kbd>
-                </div>
-            </div>
-
+            
             {/* ── RIGHT: Actions ───────────────────────────────────── */}
             <div className="flex items-center gap-1.5 shrink-0">
-
-                {/* Settings icon — placeholder */}
-                <button
-                    className="p-2 rounded-lg transition-all duration-150"
-                    title="Settings (coming soon)"
-                    style={{ color: "#475569" }}
-                    onMouseEnter={e => {
-                        e.currentTarget.style.color = "#94a3b8";
-                        e.currentTarget.style.background = "rgba(255,255,255,0.05)";
-                    }}
-                    onMouseLeave={e => {
-                        e.currentTarget.style.color = "#475569";
-                        e.currentTarget.style.background = "transparent";
-                    }}
-                >
-                    <Settings size={16} />
-                </button>
 
                 {/* Notification Bell */}
                 <div ref={bellRef} className="relative">

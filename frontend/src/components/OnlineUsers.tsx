@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import { connection } from "../hubs/chatHub";
 import { getUsers } from "../api/authApi";
 import type { User } from "../types/User";
-import { MessageSquare, Users, Wifi, PinIcon, Volume2 } from "lucide-react";
+import { MessageSquare, Users, Wifi } from "lucide-react";
 
 interface Props {
     roomName?: string;
@@ -40,16 +40,21 @@ export default function OnlineUsers({ roomName }: Props) {
             setOnlineNames(new Set(names));
         };
 
-        connection.off("OnlineUsersUpdated");
         connection.on("OnlineUsersUpdated", handlePresence);
 
-        if (connection.state === "Connected") {
-            connection.invoke("GetOnlineUsers")
-                .then((names: string[]) => setOnlineNames(new Set(names)))
-                .catch(() => { /* ignore */ });
-        }
+        // Retry getting online users until connection is ready
+        const tryGetOnline = () => {
+            if (connection.state === "Connected") {
+                connection.invoke("GetOnlineUsers")
+                    .then((names: string[]) => setOnlineNames(new Set(names)))
+                    .catch(() => { /* ignore */ });
+            } else {
+                setTimeout(tryGetOnline, 500);
+            }
+        };
+        tryGetOnline();
 
-        return () => { connection.off("OnlineUsersUpdated"); };
+        return () => { connection.off("OnlineUsersUpdated", handlePresence); };
     }, []);
 
     const others  = users.filter(u => u.id !== currentUserId);
@@ -58,44 +63,37 @@ export default function OnlineUsers({ roomName }: Props) {
 
     return (
         <div
-            className="h-full flex flex-col"
-            style={{
-                background: "linear-gradient(180deg, #0d1628 0%, #0a1120 100%)",
-                borderLeft: "1px solid rgba(255,255,255,0.06)",
-            }}
+            className="h-full flex flex-col bg-white"
+            style={{ borderLeft: "1px solid #E2E8F0" }}
         >
             {/* ── Room Info header ──────────────────────────────────── */}
             <div
                 className="px-4 py-4 shrink-0"
-                style={{ borderBottom: "1px solid rgba(255,255,255,0.06)" }}
+                style={{ borderBottom: "1px solid #E2E8F0" }}
             >
                 <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-xs font-bold uppercase tracking-widest"
-                        style={{ color: "#64748b" }}>
+                    <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">
                         Room Info
                     </h2>
-                    <Wifi size={12} style={{ color: "#22c55e" }} />
+                    <Wifi size={12} style={{ color: "#22C55E" }} />
                 </div>
 
                 {/* Room name badge */}
                 <div
                     className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
-                    style={{
-                        background: "rgba(6,182,212,0.08)",
-                        border: "1px solid rgba(6,182,212,0.15)",
-                    }}
+                    style={{ background: "#EFF6FF", border: "1px solid #BAE6FD" }}
                 >
                     <div
                         className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ background: "rgba(6,182,212,0.2)" }}
+                        style={{ background: "#DBEAFE" }}
                     >
-                        <span className="text-xs font-bold" style={{ color: "#06b6d4" }}>#</span>
+                        <span className="text-xs font-bold" style={{ color: "#0EA5E9" }}>#</span>
                     </div>
                     <div className="min-w-0">
-                        <div className="text-xs font-semibold text-white truncate">
+                        <div className="text-xs font-semibold text-slate-800 truncate">
                             {roomName ?? "General Chat"}
                         </div>
-                        <div className="text-[10px] mt-0.5" style={{ color: "#475569" }}>
+                        <div className="text-[10px] mt-0.5 text-slate-500">
                             Group channel
                         </div>
                     </div>
@@ -105,21 +103,21 @@ export default function OnlineUsers({ roomName }: Props) {
                 <div className="grid grid-cols-2 gap-2 mt-3">
                     <div
                         className="flex flex-col items-center py-2.5 rounded-xl"
-                        style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.06)" }}
+                        style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}
                     >
-                        <div className="text-base font-bold text-white">
+                        <div className="text-base font-bold text-slate-800">
                             {others.length}
                         </div>
-                        <div className="text-[10px] mt-0.5" style={{ color: "#64748b" }}>Members</div>
+                        <div className="text-[10px] mt-0.5 text-slate-500">Members</div>
                     </div>
                     <div
                         className="flex flex-col items-center py-2.5 rounded-xl"
-                        style={{ background: "rgba(34,197,94,0.06)", border: "1px solid rgba(34,197,94,0.15)" }}
+                        style={{ background: "#F0FDF4", border: "1px solid #BBF7D0" }}
                     >
-                        <div className="text-base font-bold" style={{ color: "#22c55e" }}>
+                        <div className="text-base font-bold" style={{ color: "#16A34A" }}>
                             {online.length}
                         </div>
-                        <div className="text-[10px] mt-0.5" style={{ color: "#64748b" }}>Online</div>
+                        <div className="text-[10px] mt-0.5 text-slate-500">Online</div>
                     </div>
                 </div>
             </div>
@@ -135,12 +133,9 @@ export default function OnlineUsers({ roomName }: Props) {
                         <div className="flex items-center gap-1.5 px-2 mb-1.5">
                             <span
                                 className="w-1.5 h-1.5 rounded-full"
-                                style={{ background: "#22c55e" }}
+                                style={{ background: "#22C55E" }}
                             />
-                            <span
-                                className="text-[10px] font-bold uppercase tracking-widest"
-                                style={{ color: "#64748b" }}
-                            >
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-500">
                                 Active Now — {online.length}
                             </span>
                         </div>
@@ -167,13 +162,9 @@ export default function OnlineUsers({ roomName }: Props) {
                     <div className="px-3 mb-2">
                         <div className="flex items-center gap-1.5 px-2 mb-1.5 mt-1">
                             <span
-                                className="w-1.5 h-1.5 rounded-full"
-                                style={{ background: "#334155" }}
+                                className="w-1.5 h-1.5 rounded-full bg-slate-300"
                             />
-                            <span
-                                className="text-[10px] font-bold uppercase tracking-widest"
-                                style={{ color: "#64748b" }}
-                            >
+                            <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400">
                                 Offline — {offline.length}
                             </span>
                         </div>
@@ -197,54 +188,18 @@ export default function OnlineUsers({ roomName }: Props) {
 
                 {others.length === 0 && (
                     <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                        <Users size={28} className="mb-3" style={{ color: "#1e293b" }} />
-                        <p className="text-sm font-medium" style={{ color: "#334155" }}>
+                        <Users size={28} className="mb-3 text-slate-300" />
+                        <p className="text-sm font-medium text-slate-500">
                             No other members
                         </p>
-                        <p className="text-xs mt-1" style={{ color: "#1e293b" }}>
+                        <p className="text-xs mt-1 text-slate-400">
                             Invite colleagues to join
                         </p>
                     </div>
                 )}
             </div>
 
-            {/* ── Future placeholders ───────────────────────────────── */}
-            <div
-                className="px-3 py-3 space-y-2 shrink-0"
-                style={{ borderTop: "1px solid rgba(255,255,255,0.06)" }}
-            >
-                {[
-                    { icon: PinIcon,  label: "Pinned Messages", note: "Coming soon" },
-                    { icon: Volume2,  label: "Voice Channels",  note: "Coming soon" },
-                ].map(({ icon: Icon, label, note }) => (
-                    <div
-                        key={label}
-                        className="flex items-center gap-2.5 px-3 py-2.5 rounded-xl"
-                        style={{
-                            background: "rgba(255,255,255,0.03)",
-                            border: "1px solid rgba(255,255,255,0.05)",
-                        }}
-                    >
-                        <Icon size={13} style={{ color: "#334155" }} />
-                        <div className="min-w-0 flex-1">
-                            <div className="text-xs font-medium" style={{ color: "#475569" }}>
-                                {label}
-                            </div>
-                        </div>
-                        <span
-                            className="text-[9px] px-1.5 py-0.5 rounded-md font-semibold uppercase tracking-wide shrink-0"
-                            style={{
-                                background: "rgba(255,255,255,0.04)",
-                                color: "#334155",
-                                border: "1px solid rgba(255,255,255,0.05)",
-                            }}
-                        >
-                            {note}
-                        </span>
-                    </div>
-                ))}
-            </div>
-
+            
             <style>{`
                 div::-webkit-scrollbar { display: none; }
             `}</style>
@@ -271,7 +226,7 @@ function MemberRow({ user, isOnline, fromColor, toColor, onDM }: MemberRowProps)
             onMouseLeave={() => setHovered(false)}
             className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl cursor-pointer transition-all duration-150 group"
             style={{
-                background: hovered ? "rgba(255,255,255,0.05)" : "transparent",
+                background: hovered ? "#F1F5F9" : "transparent",
             }}
         >
             {/* Avatar */}
@@ -289,8 +244,8 @@ function MemberRow({ user, isOnline, fromColor, toColor, onDM }: MemberRowProps)
                 <span
                     className="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2"
                     style={{
-                        background: isOnline ? "#22c55e" : "#334155",
-                        borderColor: "#0a1120",
+                        background: isOnline ? "#22C55E" : "#CBD5E1",
+                        borderColor: "#FFFFFF",
                     }}
                 />
             </div>
@@ -299,13 +254,13 @@ function MemberRow({ user, isOnline, fromColor, toColor, onDM }: MemberRowProps)
             <div className="flex-1 min-w-0">
                 <div
                     className="text-xs font-semibold truncate transition-colors"
-                    style={{ color: isOnline ? "#e2e8f0" : "#64748b" }}
+                    style={{ color: isOnline ? "#0F172A" : "#94A3B8" }}
                 >
                     {user.anonymousName}
                 </div>
                 <div
                     className="text-[10px] mt-0.5"
-                    style={{ color: isOnline ? "#22c55e" : "#334155" }}
+                    style={{ color: isOnline ? "#16A34A" : "#94A3B8" }}
                 >
                     {isOnline ? "Active now" : "Offline"}
                 </div>
@@ -316,7 +271,7 @@ function MemberRow({ user, isOnline, fromColor, toColor, onDM }: MemberRowProps)
                 size={13}
                 className="shrink-0 transition-all duration-150"
                 style={{
-                    color: "#06b6d4",
+                    color: "#0EA5E9",
                     opacity: hovered ? 1 : 0,
                     transform: hovered ? "scale(1)" : "scale(0.8)",
                 }}

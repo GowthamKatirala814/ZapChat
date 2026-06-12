@@ -14,4 +14,7 @@ export interface Message {
     // File attachment fields
     attachmentUrl?: string;
     fileName?: string;
+    // User self-deletion (separate from admin moderation IsRemoved)
+    isDeleted?: boolean;
+    deletedAt?: string;
 }

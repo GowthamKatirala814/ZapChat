@@ -152,6 +152,7 @@ public class ChatHub(
             id = Guid.NewGuid(),
             title = $"New message in {roomName}",
             message = $"{anonymousName}: {message}",
+            roomName = roomName,
             isRead = false,
             createdAt = DateTime.UtcNow
         });

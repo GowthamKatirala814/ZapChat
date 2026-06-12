@@ -2,13 +2,13 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { ArrowLeft, Send, X } from "lucide-react";
 import { getUserById } from "../../api/authApi";
-import { createConversation, getConversation } from "../../api/privateChatApi";
+import { createConversation, getConversation, deletePrivateMessage } from "../../api/privateChatApi";
 import { getPrivateChatConnection } from "../../hubs/privateChatHub";
 import type { User } from "../../types/User";
 import type { PrivateMessage, PrivateMessageReaction } from "../../types/PrivateMessage";
-import type { Message } from "../../types/Message";
 import type { HubConnection } from "@microsoft/signalr";
-import MessageBubble from "../../components/MessageBubble";
+import PrivateMessageBubble from "../../components/PrivateMessageBubble";
+import TopNav from "../../components/TopNav";
 
 interface ServerMessage {
     id: string;
@@ -22,12 +22,15 @@ interface ServerMessage {
     attachmentUrl?: string;
     fileName?: string;
     reactions?: PrivateMessageReaction[];
+    isDeleted?: boolean;
+    deletedAt?: string;
 }
 
 export default function PrivateChatPage() {
     const { userId: receiverUserId } = useParams<{ userId: string }>();
     const navigate = useNavigate();
 
+    const [selectedOtherUserId] = useState<string | undefined>(receiverUserId);
     const [receiver, setReceiver] = useState<User | null>(null);
     const [messages, setMessages] = useState<PrivateMessage[]>([]);
     const [messageInput, setMessageInput] = useState("");
@@ -50,19 +53,19 @@ export default function PrivateChatPage() {
 
     // Load receiver's anonymous name
     useEffect(() => {
-        if (!receiverUserId) return;
-        getUserById(receiverUserId).then(setReceiver).catch(console.error);
-    }, [receiverUserId]);
+        if (!selectedOtherUserId) return;
+        getUserById(selectedOtherUserId).then(setReceiver).catch(console.error);
+    }, [selectedOtherUserId]);
 
     // Main init: conversation + history + SignalR
     useEffect(() => {
-        if (!receiverUserId || !currentUserId) return;
+        if (!selectedOtherUserId || !currentUserId) return;
         let isMounted = true;
 
         const init = async () => {
             try {
                 // Get or create conversation (normalized server-side)
-                const conv = await createConversation(currentUserId, receiverUserId);
+                const conv = await createConversation(currentUserId, selectedOtherUserId);
                 if (!isMounted) return;
 
                 conversationIdRef.current = conv.id;
@@ -109,11 +112,23 @@ export default function PrivateChatPage() {
                     }));
                 };
 
+                const handleMessageDeleted = (data: { messageId: string; deletedAt: string }) => {
+                    if (!isMounted) return;
+                    setMessages(prev => prev.map(m =>
+                        m.id === data.messageId ? { ...m, isDeleted: true, deletedAt: data.deletedAt } : m
+                    ));
+                };
+
                 conn.off("ReceivePrivateMessage", handleReceive);
                 conn.on("ReceivePrivateMessage", handleReceive);
 
                 conn.off("ReactionAdded", handleReactionAdded);
                 conn.on("ReactionAdded", handleReactionAdded);
+
+                conn.off("MessageDeleted", handleMessageDeleted);
+                conn.on("MessageDeleted", handleMessageDeleted);
+
+                (connectionRef.current as any)._messageDeletedHandler = handleMessageDeleted;
 
                 if (conn.state === "Disconnected") {
                     await conn.start();
@@ -137,10 +152,11 @@ export default function PrivateChatPage() {
             if (conn) {
                 if (conn._receiveHandler) conn.off("ReceivePrivateMessage", conn._receiveHandler);
                 if (conn._reactionHandler) conn.off("ReactionAdded", conn._reactionHandler);
+                if (conn._messageDeletedHandler) conn.off("MessageDeleted", conn._messageDeletedHandler);
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [receiverUserId, currentUserId]);
+    }, [selectedOtherUserId, currentUserId]);
 
     const mapServerMessage = (m: ServerMessage): PrivateMessage => ({
         id: m.id,
@@ -153,7 +169,9 @@ export default function PrivateChatPage() {
         parentMessageId: m.parentMessageId,
         attachmentUrl: m.attachmentUrl,
         fileName: m.fileName,
-        reactions: m.reactions
+        reactions: m.reactions,
+        isDeleted: m.isDeleted,
+        deletedAt: m.deletedAt
     });
 
     const sendMessage = useCallback(async () => {
@@ -206,119 +224,139 @@ export default function PrivateChatPage() {
         }
     }, []);
 
-    // Helper to map PrivateMessage to Message so we can reuse MessageBubble
-    const toMessageProps = (m: PrivateMessage): Message => ({
-        id: m.id,
-        anonymousName: m.senderName,
-        message: m.content,
-        sentAt: m.sentAt,
-        userId: m.senderId,
-        parentMessageId: m.parentMessageId,
-        reactions: m.reactions?.map(r => ({ anonymousName: r.senderName, reaction: r.reaction })),
-        attachmentUrl: m.attachmentUrl,
-        fileName: m.fileName
-    });
-
     return (
-        <div className="h-screen bg-slate-950 text-white flex flex-col overflow-hidden">
+        <div className="h-screen flex flex-col overflow-hidden" style={{ background: "#F8FAFC" }}>
+            <TopNav />
+            {/* Main Chat Area */}
+            {selectedOtherUserId ? (
+                <div className="flex-1 flex flex-col overflow-hidden">
+                    {/* Header */}
+                    <div
+                        className="px-5 py-3 flex items-center gap-3 shrink-0"
+                        style={{ background: "#FFFFFF", borderBottom: "1px solid #E2E8F0" }}
+                    >
+                        <button
+                            onClick={() => navigate("/dashboard")}
+                            className="text-slate-500 hover:text-slate-900 transition-colors p-1 rounded">
+                            <ArrowLeft size={18} />
+                        </button>
 
-            {/* Header */}
-            <div className="border-b border-slate-800 px-5 py-3 flex items-center gap-3 bg-slate-900 shrink-0">
-                <button
-                    onClick={() => navigate("/dashboard")}
-                    className="text-slate-400 hover:text-white transition-colors p-1 rounded">
-                    <ArrowLeft size={18} />
-                </button>
-
-                <div className="w-9 h-9 rounded-full bg-gradient-to-br from-blue-500 to-violet-600 flex items-center justify-center font-bold text-sm shrink-0">
-                    {receiver?.anonymousName?.charAt(0).toUpperCase() ?? "?"}
-                </div>
-
-                <div>
-                    <div className="font-semibold text-white text-sm">
-                        {receiver?.anonymousName ?? "Loading…"}
-                    </div>
-                    <div className="text-xs text-green-500">Private · Encrypted</div>
-                </div>
-            </div>
-
-            {/* Messages */}
-            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2">
-                {messages.length === 0 && ready && (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-2">
-                        <span className="text-4xl">🔒</span>
-                        <p className="text-sm">Start your private conversation</p>
-                        <p className="text-xs">Messages are anonymous</p>
-                    </div>
-                )}
-
-                {messages.map((m, index) => (
-                    <MessageBubble
-                        key={m.id ?? index}
-                        message={toMessageProps(m)}
-                        onReply={() => {
-                            setReplyingTo(m);
-                            inputRef.current?.focus();
-                        }}
-                        onReact={(emoji) => handleReaction(m.id!, emoji)}
-                    />
-                ))}
-
-                <div ref={messagesEndRef} />
-            </div>
-
-            {/* Reply preview */}
-            {replyingTo && (
-                <div className="mx-4 mb-1 px-3 py-2 bg-slate-800 border-l-2 border-blue-500 rounded flex items-center justify-between">
-                    <div className="min-w-0">
-                        <div className="text-xs text-blue-400 font-medium">
-                            Replying to {replyingTo.senderName}
+                        <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center font-bold text-sm text-white shrink-0"
+                            style={{ background: "linear-gradient(135deg, #0EA5E9, #38BDF8)" }}
+                        >
+                            {receiver?.anonymousName?.charAt(0).toUpperCase() ?? "?"}
                         </div>
-                        <div className="text-xs text-slate-400 truncate">
-                            {replyingTo.content}
+
+                        <div>
+                            <div className="font-semibold text-slate-900 text-sm">
+                                {receiver?.anonymousName ?? "Loading…"}
+                            </div>
+                            <div className="text-xs text-emerald-600">Private · Encrypted</div>
                         </div>
                     </div>
-                    <button
-                        onClick={() => setReplyingTo(null)}
-                        className="text-slate-500 hover:text-white ml-2 shrink-0">
-                        <X size={14} />
-                    </button>
-                </div>
-            )}
 
-            {/* Input */}
-            <div className="border-t border-slate-800 px-4 py-3 bg-slate-900 shrink-0">
-                <div className="flex items-center gap-3">
-                    <input
-                        ref={inputRef}
-                        value={messageInput}
-                        onChange={e => setMessageInput(e.target.value)}
-                        onKeyDown={e => {
-                            if (e.key === "Enter" && !e.shiftKey) {
-                                e.preventDefault();
-                                sendMessage();
-                            }
-                            if (e.key === "Escape") setReplyingTo(null);
-                        }}
-                        placeholder={replyingTo ? `Reply to ${replyingTo.senderName}…` : `Message ${receiver?.anonymousName ?? "…"}`}
-                        disabled={!ready}
-                        className="
-                            flex-1 bg-slate-800 border border-slate-700 rounded-xl
-                            px-4 py-3 text-sm text-white outline-none
-                            focus:border-blue-500 placeholder:text-slate-500
+                    {/* Messages */}
+                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2" style={{ background: "#F8FAFC" }}>
+                        {messages.length === 0 && ready && (
+                            <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
+                                <span className="text-4xl">🔒</span>
+                                <p className="text-sm">Start your private conversation</p>
+                                <p className="text-xs">Messages are anonymous</p>
+                            </div>
+                        )}
+
+                        {messages.map((m, index) => (
+                            <PrivateMessageBubble
+                                key={m.id ?? index}
+                                message={m}
+                                onReply={() => {
+                                    setReplyingTo(m);
+                                    inputRef.current?.focus();
+                                }}
+                                onReact={(emoji) => handleReaction(m.id!, emoji)}
+                                onDelete={m.id ? async () => {
+                                    try {
+                                        await deletePrivateMessage(m.id!);
+                                        setMessages(prev => prev.map(msg =>
+                                            msg.id === m.id
+                                                ? { ...msg, isDeleted: true, deletedAt: new Date().toISOString() }
+                                                : msg
+                                        ));
+                                    } catch (err) {
+                                        console.error("[PrivateChat] DeleteMessage error:", err);
+                                    }
+                                } : undefined}
+                            />
+                        ))}
+
+                        <div ref={messagesEndRef} />
+                    </div>
+
+                    {/* Reply preview */}
+                    {replyingTo && (
+                        <div
+                            className="mx-4 mb-1 px-3 py-2 rounded flex items-center justify-between"
+                            style={{ background: "#EFF6FF", borderLeft: "2px solid #38BDF8" }}
+                        >
+                            <div className="min-w-0">
+                                <div className="text-xs text-sky-600 font-medium">
+                                    Replying to {replyingTo.senderName}
+                                </div>
+                                <div className="text-xs text-slate-500 truncate">
+                                    {replyingTo.content}
+                                </div>
+                            </div>
+                            <button
+                                onClick={() => setReplyingTo(null)}
+                                className="text-slate-400 hover:text-slate-700 ml-2 shrink-0">
+                                <X size={14} />
+                            </button>
+                        </div>
+                    )}
+
+                    {/* Input */}
+                    <div className="border-t border-slate-200 px-4 py-3 bg-white shrink-0">
+                        <div className="flex items-center gap-3">
+                            <input
+                                ref={inputRef}
+                                value={messageInput}
+                                onChange={e => setMessageInput(e.target.value)}
+                                onKeyDown={e => {
+                                    if (e.key === "Enter" && !e.shiftKey) {
+                                        e.preventDefault();
+                                        sendMessage();
+                                    }
+                                    if (e.key === "Escape") setReplyingTo(null);
+                                }}
+                                placeholder={replyingTo ? `Reply to ${replyingTo.senderName}…` : `Message ${receiver?.anonymousName ?? "…"}`}
+                                disabled={!ready}
+                                className="
+                            flex-1 bg-white border border-slate-200 rounded-xl
+                            px-4 py-3 text-sm text-slate-900 outline-none
+                            focus:border-sky-400 placeholder:text-slate-400
                             disabled:opacity-50 transition-colors"
-                    />
-                    <button
-                        onClick={sendMessage}
-                        disabled={!messageInput.trim() || sending || !ready}
-                        className="
-                            p-3 rounded-xl bg-blue-600 hover:bg-blue-700
+                            />
+                            <button
+                                onClick={sendMessage}
+                                disabled={!messageInput.trim() || sending || !ready}
+                                className="
+                            p-3 rounded-xl bg-sky-500 hover:bg-sky-600 text-white
                             disabled:opacity-40 disabled:cursor-not-allowed
                             transition-colors shrink-0">
-                        <Send size={17} />
-                    </button>
+                                <Send size={17} />
+                            </button>
+                        </div>
+                    </div>
                 </div>
-            </div>
+            ) : (
+                <div className="flex-1 flex items-center justify-center text-slate-500">
+                    <div className="text-center">
+                        <p className="text-lg font-medium">No conversation selected</p>
+                        <p className="text-sm">Navigate to a user to start a private chat</p>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

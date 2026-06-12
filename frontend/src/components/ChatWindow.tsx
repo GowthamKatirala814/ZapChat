@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { connection } from "../hubs/chatHub";
-import { getRoomMessages } from "../api/chatApi";
+import { getRoomMessages, deleteMessage } from "../api/chatApi";
 import MessageBubble from "./MessageBubble";
 import type { Message } from "../types/Message";
 import { Send, X } from "lucide-react";
@@ -77,15 +77,27 @@ export default function ChatWindow({ roomName }: Props) {
             }));
         };
 
+        const handleMessageDeleted = (data: { messageId: string; deletedAt: string }) => {
+            setMessages(prev => prev.map(m =>
+                m.id === data.messageId ? { ...m, isDeleted: true, deletedAt: data.deletedAt } : m
+            ));
+        };
+
         connection.on("ReceiveMessage", handleReceiveMessage);
         connection.on("UserJoined", handleUserJoined);
         connection.on("UserLeft", handleUserLeft);
         connection.on("UserTyping", handleUserTyping);
         connection.on("UserStoppedTyping", handleUserStoppedTyping);
         connection.on("ReactionAdded", handleReactionAdded);
+        connection.on("MessageDeleted", handleMessageDeleted);
 
         const boot = async () => {
             try {
+                const token = localStorage.getItem("token");
+                if (!token) {
+                    console.error("[ChatHub] No token — aborting connection");
+                    return;
+                }
                 if (connection.state === "Disconnected") {
                     await connection.start();
                 }
@@ -106,6 +118,7 @@ export default function ChatWindow({ roomName }: Props) {
             connection.off("UserTyping", handleUserTyping);
             connection.off("UserStoppedTyping", handleUserStoppedTyping);
             connection.off("ReactionAdded", handleReactionAdded);
+            connection.off("MessageDeleted", handleMessageDeleted);
         };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -181,11 +194,11 @@ export default function ChatWindow({ roomName }: Props) {
     }, []);
 
     return (
-        <div className="h-full flex flex-col bg-slate-950 overflow-hidden">
+        <div className="h-full flex flex-col overflow-hidden" style={{ background: "#F8FAFC" }}>
 
             {/* System status toast */}
             {statusMsg && (
-                <div className="px-6 py-1.5 text-xs text-slate-400 bg-slate-900 border-b border-slate-800 text-center">
+                <div className="px-6 py-1.5 text-xs text-slate-500 bg-white border-b border-slate-100 text-center">
                     {statusMsg}
                 </div>
             )}
@@ -193,7 +206,7 @@ export default function ChatWindow({ roomName }: Props) {
             {/* Messages */}
             <div className="flex-1 overflow-y-auto px-4 py-4 space-y-1">
                 {messages.length === 0 && (
-                    <div className="flex flex-col items-center justify-center h-full text-slate-600 gap-2">
+                    <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
                         <p className="text-4xl">💬</p>
                         <p className="text-sm">No messages yet in #{roomName}</p>
                         <p className="text-xs">Be the first to say something</p>
@@ -209,6 +222,18 @@ export default function ChatWindow({ roomName }: Props) {
                             inputRef.current?.focus();
                         }}
                         onReact={(emoji) => handleReaction(m.id!, emoji)}
+                        onDelete={m.id ? async () => {
+                            try {
+                                await deleteMessage(m.id!);
+                                setMessages(prev => prev.map(msg =>
+                                    msg.id === m.id
+                                        ? { ...msg, isDeleted: true, deletedAt: new Date().toISOString() }
+                                        : msg
+                                ));
+                            } catch (err) {
+                                console.error("[ChatWindow] DeleteMessage error:", err);
+                            }
+                        } : undefined}
                     />
                 ))}
 
@@ -223,25 +248,28 @@ export default function ChatWindow({ roomName }: Props) {
 
             {/* Reply preview */}
             {replyingTo && (
-                <div className="mx-4 mb-1 px-3 py-2 bg-slate-800 border-l-2 border-blue-500 rounded flex items-center justify-between">
+                <div
+                    className="mx-4 mb-1 px-3 py-2 rounded flex items-center justify-between"
+                    style={{ background: "#EFF6FF", borderLeft: "2px solid #38BDF8" }}
+                >
                     <div className="min-w-0">
-                        <div className="text-xs text-blue-400 font-medium">
+                        <div className="text-xs text-sky-600 font-medium">
                             Replying to {replyingTo.anonymousName}
                         </div>
-                        <div className="text-xs text-slate-400 truncate">
+                        <div className="text-xs text-slate-500 truncate">
                             {replyingTo.message}
                         </div>
                     </div>
                     <button
                         onClick={() => setReplyingTo(null)}
-                        className="text-slate-500 hover:text-white ml-2 shrink-0">
+                        className="text-slate-400 hover:text-slate-700 ml-2 shrink-0">
                         <X size={14} />
                     </button>
                 </div>
             )}
 
             {/* Input bar */}
-            <div className="border-t border-slate-800 px-4 py-3 shrink-0">
+            <div className="border-t border-slate-200 px-4 py-3 shrink-0 bg-white">
                 <div className="flex items-center gap-3">
                     <input
                         ref={inputRef}
@@ -256,16 +284,16 @@ export default function ChatWindow({ roomName }: Props) {
                         }}
                         placeholder={replyingTo ? `Reply to ${replyingTo.anonymousName}…` : `Message #${roomName}`}
                         className="
-                            flex-1 bg-slate-800 border border-slate-700 rounded-xl
-                            px-4 py-3 text-sm text-white outline-none
-                            focus:border-blue-500 placeholder:text-slate-500
+                            flex-1 bg-white border border-slate-200 rounded-xl
+                            px-4 py-3 text-sm text-slate-900 outline-none
+                            focus:border-sky-400 placeholder:text-slate-400
                             transition-colors"
                     />
                     <button
                         onClick={sendMessage}
                         disabled={!message.trim()}
                         className="
-                            p-3 rounded-xl bg-blue-600 hover:bg-blue-700
+                            p-3 rounded-xl bg-sky-500 hover:bg-sky-600 text-white
                             disabled:opacity-40 disabled:cursor-not-allowed
                             transition-colors shrink-0">
                         <Send size={17} />

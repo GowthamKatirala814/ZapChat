@@ -10,13 +10,10 @@ interface LoginForm {
     password: string;
 }
 
-type LoginMode = "user" | "admin";
-
 export default function LoginPage() {
     const navigate = useNavigate();
     const dispatch = useDispatch();
 
-    const [mode, setMode] = useState<LoginMode>("user");
     const [showPassword, setShowPassword] = useState(false);
     const [apiError, setApiError] = useState<string | null>(null);
     const [success, setSuccess] = useState(false);
@@ -27,28 +24,41 @@ export default function LoginPage() {
         formState: { errors, isSubmitting },
     } = useForm<LoginForm>();
 
+    // Decode the role claim embedded in the JWT — determines redirect destination
+    const decodeRole = (token: string): "admin" | "user" => {
+        try {
+            const payload = JSON.parse(atob(token.split(".")[1]));
+            const roleKey = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
+            const raw: string | string[] | undefined = payload[roleKey] ?? payload["role"];
+            const roles = Array.isArray(raw) ? raw : raw ? [raw] : [];
+            return roles.some((r: string) => r.toLowerCase() === "admin") ? "admin" : "user";
+        } catch {
+            return "user";
+        }
+    };
+
     const onSubmit = async (data: LoginForm) => {
         setApiError(null);
         try {
             const result = await login({
                 email: data.email,
                 password: data.password,
-                role: mode,
             });
 
-            // Persist identity
+            const actualRole = decodeRole(result.token);
+
             dispatch(
                 loginSuccess({
                     token: result.token,
                     userId: result.userId,
                     anonymousName: result.anonymousName,
                     email: data.email,
-                    role: mode,
+                    role: actualRole,
                 })
             );
 
             setSuccess(true);
-            setTimeout(() => navigate("/dashboard"), 800);
+            setTimeout(() => navigate(actualRole === "admin" ? "/admin" : "/dashboard"), 800);
         } catch (err: unknown) {
             const message =
                 (err as { response?: { data?: { message?: string } } })?.response?.data
@@ -56,8 +66,6 @@ export default function LoginPage() {
             setApiError(message);
         }
     };
-
-
 
     return (
         <div className="min-h-screen flex bg-slate-950">
@@ -186,7 +194,7 @@ export default function LoginPage() {
                             <span className="text-xl font-black text-white">Z</span>
                         </div>
                         <span className="text-2xl font-black text-white">
-                            Zap<span style={{ color: "#06b6d4" }}>Pulse</span>
+                            Zap<span style={{ color: "#38BDF8" }}>Com</span>
                         </span>
                     </div>
 
@@ -195,77 +203,12 @@ export default function LoginPage() {
                         <h2 className="text-3xl font-bold text-white mb-2">Welcome back</h2>
                         <p className="text-slate-400">
                             Sign in to your{" "}
-                            <span style={{ color: "#06b6d4" }} className="font-medium">
-                                ZapPulse
+                            <span style={{ color: "#0EA5E9" }} className="font-medium">
+                                ZapCom
                             </span>{" "}
                             workspace
                         </p>
                     </div>
-
-                    {/* Mode tabs */}
-                    <div
-                        className="flex rounded-xl p-1 mb-8"
-                        style={{
-                            background: "rgba(255,255,255,0.04)",
-                            border: "1px solid rgba(255,255,255,0.08)",
-                        }}
-                    >
-                        <button
-                            type="button"
-                            id="tab-user"
-                            onClick={() => { setMode("user"); setApiError(null); }}
-                            className="flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200"
-                            style={
-                                mode === "user"
-                                    ? {
-                                        background: "linear-gradient(135deg, #0ea5e9, #06b6d4)",
-                                        color: "#fff",
-                                        boxShadow: "0 4px 15px rgba(6,182,212,0.3)",
-                                    }
-                                    : { color: "#94a3b8" }
-                            }
-                        >
-                            👤 User Login
-                        </button>
-                        <button
-                            type="button"
-                            id="tab-admin"
-                            onClick={() => { setMode("admin"); setApiError(null); }}
-                            className="flex-1 py-2.5 px-4 rounded-lg text-sm font-semibold transition-all duration-200"
-                            style={
-                                mode === "admin"
-                                    ? {
-                                        background: "linear-gradient(135deg, #7c3aed, #6d28d9)",
-                                        color: "#fff",
-                                        boxShadow: "0 4px 15px rgba(124,58,237,0.3)",
-                                    }
-                                    : { color: "#94a3b8" }
-                            }
-                        >
-                            🛡️ Admin Login
-                        </button>
-                    </div>
-
-                    {/* Admin notice */}
-                    {mode === "admin" && (
-                        <div
-                            className="flex items-start gap-3 px-4 py-3 rounded-xl mb-6"
-                            style={{
-                                background: "rgba(124,58,237,0.12)",
-                                border: "1px solid rgba(124,58,237,0.3)",
-                            }}
-                        >
-                            <span className="text-lg mt-0.5">🔐</span>
-                            <div>
-                                <p className="text-purple-300 text-sm font-semibold">
-                                    Admin Access
-                                </p>
-                                <p className="text-purple-400 text-xs mt-0.5">
-                                    This portal is restricted to authorized administrators only.
-                                </p>
-                            </div>
-                        </div>
-                    )}
 
                     {/* Form card */}
                     <div
@@ -348,14 +291,8 @@ export default function LoginPage() {
                                             caretColor: "#06b6d4",
                                         }}
                                         onFocus={(e) => {
-                                            e.target.style.border =
-                                                mode === "admin"
-                                                    ? "1px solid rgba(124,58,237,0.7)"
-                                                    : "1px solid rgba(6,182,212,0.7)";
-                                            e.target.style.boxShadow =
-                                                mode === "admin"
-                                                    ? "0 0 0 3px rgba(124,58,237,0.1)"
-                                                    : "0 0 0 3px rgba(6,182,212,0.1)";
+                                            e.target.style.border = "1px solid rgba(6,182,212,0.7)";
+                                            e.target.style.boxShadow = "0 0 0 3px rgba(6,182,212,0.1)";
                                         }}
                                         onBlur={(e) => {
                                             e.target.style.border = errors.email
@@ -377,8 +314,8 @@ export default function LoginPage() {
                                         <label className="block text-sm font-medium text-slate-300">
                                             Password
                                         </label>
-                                        <a
-                                            href="#"
+                                        <Link
+                                            to="/forgot-password"
                                             id="forgot-password-link"
                                             className="text-xs transition-colors"
                                             style={{ color: "#06b6d4" }}
@@ -390,7 +327,7 @@ export default function LoginPage() {
                                             }
                                         >
                                             Forgot password?
-                                        </a>
+                                        </Link>
                                     </div>
                                     <div className="relative">
                                         <input
@@ -414,14 +351,8 @@ export default function LoginPage() {
                                                 caretColor: "#06b6d4",
                                             }}
                                             onFocus={(e) => {
-                                                e.target.style.border =
-                                                    mode === "admin"
-                                                        ? "1px solid rgba(124,58,237,0.7)"
-                                                        : "1px solid rgba(6,182,212,0.7)";
-                                                e.target.style.boxShadow =
-                                                    mode === "admin"
-                                                        ? "0 0 0 3px rgba(124,58,237,0.1)"
-                                                        : "0 0 0 3px rgba(6,182,212,0.1)";
+                                                e.target.style.border = "1px solid rgba(6,182,212,0.7)";
+                                                e.target.style.boxShadow = "0 0 0 3px rgba(6,182,212,0.1)";
                                             }}
                                             onBlur={(e) => {
                                                 e.target.style.border = errors.password
@@ -447,34 +378,21 @@ export default function LoginPage() {
                                     )}
                                 </div>
 
-
                                 {/* Submit */}
                                 <button
                                     type="submit"
                                     id="submit-login"
                                     disabled={isSubmitting}
                                     className="w-full py-3.5 rounded-xl font-semibold text-sm text-white transition-all duration-200 relative overflow-hidden"
-                                    style={
-                                        mode === "admin"
-                                            ? {
-                                                background: isSubmitting
-                                                    ? "rgba(124,58,237,0.5)"
-                                                    : "linear-gradient(135deg, #7c3aed, #6d28d9)",
-                                                boxShadow: isSubmitting
-                                                    ? "none"
-                                                    : "0 8px 25px rgba(124,58,237,0.4)",
-                                                cursor: isSubmitting ? "not-allowed" : "pointer",
-                                            }
-                                            : {
-                                                background: isSubmitting
-                                                    ? "rgba(6,182,212,0.4)"
-                                                    : "linear-gradient(135deg, #0ea5e9, #06b6d4)",
-                                                boxShadow: isSubmitting
-                                                    ? "none"
-                                                    : "0 8px 25px rgba(6,182,212,0.35)",
-                                                cursor: isSubmitting ? "not-allowed" : "pointer",
-                                            }
-                                    }
+                                    style={{
+                                        background: isSubmitting
+                                            ? "rgba(6,182,212,0.4)"
+                                            : "linear-gradient(135deg, #0ea5e9, #06b6d4)",
+                                        boxShadow: isSubmitting
+                                            ? "none"
+                                            : "0 8px 25px rgba(6,182,212,0.35)",
+                                        cursor: isSubmitting ? "not-allowed" : "pointer",
+                                    }}
                                 >
                                     {isSubmitting ? (
                                         <span className="flex items-center justify-center gap-2">
@@ -499,8 +417,6 @@ export default function LoginPage() {
                                             </svg>
                                             Signing in…
                                         </span>
-                                    ) : mode === "admin" ? (
-                                        "🛡️ Sign In as Admin"
                                     ) : (
                                         "Sign In →"
                                     )}
@@ -530,7 +446,7 @@ export default function LoginPage() {
 
                     {/* Footer note */}
                     <p className="text-center text-slate-600 text-xs mt-6">
-                        By signing in, you agree to ZapPulse{" "}
+                        By signing in, you agree to ZapCom{" "}
                         <a href="#" className="underline hover:text-slate-400 transition-colors">
                             Terms of Service
                         </a>{" "}

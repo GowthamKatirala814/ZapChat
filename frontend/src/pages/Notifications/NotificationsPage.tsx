@@ -1,7 +1,7 @@
 import { useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Bell, CheckCheck, Trash2 } from "lucide-react";
-import { useNavigate } from "react-router-dom";
+import TopNav from "../../components/TopNav";
 import type { RootState, AppDispatch } from "../../store/store";
 import {
     setNotifications,
@@ -18,7 +18,6 @@ import {
 
 export default function NotificationsPage() {
     const dispatch = useDispatch<AppDispatch>();
-    const navigate = useNavigate();
     const { items } = useSelector(
         (s: RootState) => s.notifications
     );
@@ -49,36 +48,26 @@ export default function NotificationsPage() {
     const unreadCount = items.filter(n => !n.isRead).length;
 
     return (
-        <div className="
-            min-h-screen bg-slate-950 text-white
-            flex flex-col">
+        <div className="min-h-screen flex flex-col" style={{ background: "#F8FAFC" }}>
+            <TopNav />
 
             {/* Header */}
-            <div className="
-                border-b border-slate-800 px-6 py-4
-                flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => navigate("/dashboard")}
-                        className="
-                            text-slate-400 hover:text-white
-                            text-sm">
-                        ← Dashboard
-                    </button>
-                    <div className="flex items-center gap-2">
-                        <Bell size={20} className="text-blue-400" />
-                        <h1 className="text-xl font-bold">
-                            Notifications
-                        </h1>
-                        {unreadCount > 0 && (
-                            <span className="
-                                bg-blue-600 text-white
-                                text-xs rounded-full
-                                px-2 py-0.5">
-                                {unreadCount}
-                            </span>
-                        )}
-                    </div>
+            <div
+                className="px-6 py-4 flex items-center justify-between bg-white"
+                style={{ borderBottom: "1px solid #E2E8F0" }}
+            >
+                <div className="flex items-center gap-2">
+                    <Bell size={20} style={{ color: "#0EA5E9" }} />
+                    <h1 className="text-xl font-bold text-slate-900">
+                        Notifications
+                    </h1>
+                    {unreadCount > 0 && (
+                        <span
+                            className="text-white text-xs rounded-full px-2 py-0.5"
+                            style={{ background: "#0EA5E9" }}>
+                            {unreadCount}
+                        </span>
+                    )}
                 </div>
 
                 {unreadCount > 0 && (
@@ -86,8 +75,8 @@ export default function NotificationsPage() {
                         onClick={handleMarkAll}
                         className="
                             flex items-center gap-2
-                            text-sm text-blue-400
-                            hover:text-blue-300
+                            text-sm text-sky-600
+                            hover:text-sky-700
                             transition-colors">
                         <CheckCheck size={16} />
                         Mark all as read
@@ -121,8 +110,8 @@ export default function NotificationsPage() {
                                 p-4 rounded-xl border
                                 transition-colors
                                 ${!n.isRead
-                                    ? "bg-slate-900 border-blue-500/30"
-                                    : "bg-slate-900/50 border-slate-800"
+                                    ? "bg-white border-sky-200"
+                                    : "bg-white border-slate-200"
                                 }
                             `}
                         >
@@ -131,26 +120,26 @@ export default function NotificationsPage() {
                                 {!n.isRead ? (
                                     <span className="
                                         block w-2.5 h-2.5
-                                        rounded-full bg-blue-500" />
+                                        rounded-full bg-sky-500" />
                                 ) : (
                                     <span className="
                                         block w-2.5 h-2.5
-                                        rounded-full bg-slate-700" />
+                                        rounded-full bg-slate-200" />
                                 )}
                             </div>
 
                             {/* Content */}
                             <div className="flex-1 min-w-0">
                                 <p className="
-                                    font-semibold text-sm text-white">
+                                    font-semibold text-sm text-slate-900">
                                     {n.title}
                                 </p>
                                 <p className="
-                                    text-sm text-slate-400 mt-0.5">
+                                    text-sm text-slate-600 mt-0.5">
                                     {n.message}
                                 </p>
                                 <p className="
-                                    text-xs text-slate-600 mt-2">
+                                    text-xs text-slate-400 mt-2">
                                     {new Date(n.createdAt)
                                         .toLocaleString()}
                                 </p>
@@ -166,9 +155,9 @@ export default function NotificationsPage() {
                                         title="Mark as read"
                                         className="
                                             text-slate-400
-                                            hover:text-green-400
+                                            hover:text-emerald-600
                                             p-1.5 rounded-lg
-                                            hover:bg-slate-800
+                                            hover:bg-emerald-50
                                             transition-colors">
                                         <CheckCheck size={16} />
                                     </button>
@@ -178,9 +167,9 @@ export default function NotificationsPage() {
                                     title="Delete"
                                     className="
                                         text-slate-400
-                                        hover:text-red-400
+                                        hover:text-red-500
                                         p-1.5 rounded-lg
-                                        hover:bg-slate-800
+                                        hover:bg-red-50
                                         transition-colors">
                                     <Trash2 size={16} />
                                 </button>

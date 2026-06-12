@@ -15,4 +15,7 @@ export interface PrivateMessage {
     reactions?: PrivateMessageReaction[];
     attachmentUrl?: string;
     fileName?: string;
+    // User self-deletion (separate from admin moderation IsRemoved)
+    isDeleted?: boolean;
+    deletedAt?: string;
 }

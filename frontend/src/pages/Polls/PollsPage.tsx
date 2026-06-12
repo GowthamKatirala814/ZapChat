@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { BarChart3, Plus, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import TopNav from "../../components/TopNav";
 import type { RootState, AppDispatch } from "../../store/store";
 import {
     setPolls,
@@ -17,7 +18,7 @@ import PollCard from "../../components/PollCard";
 
 export default function PollsPage() {
     const dispatch = useDispatch<AppDispatch>();
-    const navigate = useNavigate();
+    useNavigate(); // retained for future navigation
     const { polls, loading } = useSelector(
         (s: RootState) => s.polls
     );
@@ -108,35 +109,25 @@ export default function PollsPage() {
     };
 
     return (
-        <div className="
-            min-h-screen bg-slate-950 text-white
-            flex flex-col">
+        <div className="min-h-screen flex flex-col" style={{ background: "#F8FAFC" }}>
+            <TopNav />
 
-            {/* Header */}
-            <div className="
-                border-b border-slate-800 px-6 py-4
-                flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                    <button
-                        onClick={() => navigate("/dashboard")}
-                        className="text-slate-400 hover:text-white text-sm">
-                        ← Dashboard
-                    </button>
-                    <div className="flex items-center gap-2">
-                        <BarChart3
-                            size={20}
-                            className="text-blue-400"
-                        />
-                        <h1 className="text-xl font-bold">Polls</h1>
-                    </div>
+            {/* Page header */}
+            <div
+                className="px-6 py-4 flex items-center justify-between bg-white"
+                style={{ borderBottom: "1px solid #E2E8F0" }}
+            >
+                <div className="flex items-center gap-2">
+                    <BarChart3 size={20} style={{ color: "#0EA5E9" }} />
+                    <h1 className="text-xl font-bold text-slate-900">Polls</h1>
                 </div>
                 <button
                     onClick={() => setShowCreate(true)}
-                    className="
-                        flex items-center gap-2 text-sm
-                        bg-blue-600 hover:bg-blue-700
-                        px-4 py-2 rounded-lg
-                        transition-colors">
+                    className="flex items-center gap-2 text-sm text-white px-4 py-2 rounded-lg transition-colors"
+                    style={{ background: "#0EA5E9" }}
+                    onMouseEnter={e => (e.currentTarget.style.background = "#0284C7")}
+                    onMouseLeave={e => (e.currentTarget.style.background = "#0EA5E9")}
+                >
                     <Plus size={16} />
                     New Poll
                 </button>
@@ -147,18 +138,15 @@ export default function PollsPage() {
                 <div className="
                     fixed inset-0 bg-black/60
                     flex items-center justify-center z-50">
-                    <div className="
-                        bg-slate-900 border border-slate-700
-                        rounded-2xl p-6 w-full max-w-md
-                        space-y-4">
+                    <div className="bg-white rounded-2xl p-6 w-full max-w-md space-y-4"
+                        style={{ border: "1px solid #E2E8F0", boxShadow: "0 16px 48px rgba(0,0,0,0.12)" }}>
                         <div className="flex items-center justify-between">
-                            <h2 className="text-lg font-semibold">
+                            <h2 className="text-lg font-semibold text-slate-900">
                                 Create Poll
                             </h2>
                             <button
                                 onClick={() => setShowCreate(false)}
-                                className="
-                                    text-slate-400 hover:text-white">
+                                className="text-slate-400 hover:text-slate-700">
                                 <X size={20} />
                             </button>
                         </div>
@@ -168,15 +156,15 @@ export default function PollsPage() {
                             onChange={e => setQuestion(e.target.value)}
                             placeholder="Ask a question..."
                             className="
-                                w-full bg-slate-800 rounded-lg
-                                px-4 py-3 text-sm outline-none
-                                border border-slate-700
-                                focus:border-blue-500
+                                w-full bg-white rounded-lg
+                                px-4 py-3 text-sm text-slate-900 outline-none
+                                border border-slate-200
+                                focus:border-sky-400
                                 transition-colors"
                         />
 
                         <div className="space-y-2">
-                            <p className="text-xs text-slate-400 uppercase">
+                            <p className="text-xs text-slate-500 uppercase font-medium">
                                 Options
                             </p>
                             {options.map((opt, idx) => (
@@ -193,11 +181,11 @@ export default function PollsPage() {
                                         }
                                         placeholder={`Option ${idx + 1}`}
                                         className="
-                                            flex-1 bg-slate-800
+                                            flex-1 bg-white
                                             rounded-lg px-4 py-2.5
-                                            text-sm outline-none
-                                            border border-slate-700
-                                            focus:border-blue-500
+                                            text-sm text-slate-900 outline-none
+                                            border border-slate-200
+                                            focus:border-sky-400
                                             transition-colors"
                                     />
                                     {options.length > 2 && (
@@ -206,8 +194,8 @@ export default function PollsPage() {
                                                 handleRemoveOption(idx)
                                             }
                                             className="
-                                                text-slate-500
-                                                hover:text-red-400">
+                                                text-slate-400
+                                                hover:text-red-500">
                                             <X size={16} />
                                         </button>
                                     )}
@@ -217,8 +205,8 @@ export default function PollsPage() {
                                 <button
                                     onClick={handleAddOption}
                                     className="
-                                        text-xs text-blue-400
-                                        hover:text-blue-300
+                                        text-xs text-sky-600
+                                        hover:text-sky-700
                                         flex items-center gap-1">
                                     <Plus size={12} />
                                     Add option
@@ -237,9 +225,9 @@ export default function PollsPage() {
                                 onClick={() => setShowCreate(false)}
                                 className="
                                     flex-1 py-2.5 rounded-lg
-                                    border border-slate-700
-                                    text-sm text-slate-400
-                                    hover:bg-slate-800
+                                    border border-slate-200
+                                    text-sm text-slate-600
+                                    hover:bg-slate-50
                                     transition-colors">
                                 Cancel
                             </button>
@@ -247,11 +235,13 @@ export default function PollsPage() {
                                 onClick={handleCreate}
                                 disabled={creating}
                                 className="
-                                    flex-1 py-2.5 rounded-lg
-                                    bg-blue-600 hover:bg-blue-700
+                                    flex-1 py-2.5 rounded-lg text-white
                                     text-sm font-medium
                                     transition-colors
-                                    disabled:opacity-50">
+                                    disabled:opacity-50"
+                                style={{ background: "#0EA5E9" }}
+                                onMouseEnter={e => (e.currentTarget.style.background = "#0284C7")}
+                                onMouseLeave={e => (e.currentTarget.style.background = "#0EA5E9")}>
                                 {creating ? "Creating..." : "Create"}
                             </button>
                         </div>

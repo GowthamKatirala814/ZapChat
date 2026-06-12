@@ -53,18 +53,18 @@ export default function PollCard({
     };
 
     return (
-        <div className="
-            bg-slate-900 border border-slate-700
-            rounded-xl p-5 space-y-4">
+        <div className="bg-white rounded-xl p-5 space-y-4"
+            style={{ border: "1px solid #E2E8F0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
 
             {/* Question */}
             <div className="flex items-start gap-3">
                 <BarChart3
                     size={18}
-                    className="text-blue-400 mt-0.5 shrink-0"
+                    className="mt-0.5 shrink-0"
+                    style={{ color: "#0EA5E9" }}
                 />
                 <div>
-                    <p className="font-semibold text-white">
+                    <p className="font-semibold text-slate-900">
                         {poll.question}
                     </p>
                     <p className="text-xs text-slate-500 mt-0.5">
@@ -96,8 +96,8 @@ export default function PollCard({
                                 rounded-lg overflow-hidden
                                 border transition-colors
                                 ${isSelected
-                                    ? "border-blue-500 ring-1 ring-blue-500 cursor-pointer"
-                                    : "border-slate-700 hover:border-slate-500 cursor-pointer"
+                                    ? "border-sky-400 ring-1 ring-sky-400 cursor-pointer"
+                                    : "border-slate-200 hover:border-slate-300 cursor-pointer"
                                 }
                             `}
                         >
@@ -105,7 +105,7 @@ export default function PollCard({
                             <div
                                 className="
                                     absolute inset-0
-                                    bg-blue-600/20
+                                    bg-sky-100
                                     transition-all duration-500"
                                 style={{ width: `${pct}%` }}
                             />
@@ -115,11 +115,11 @@ export default function PollCard({
                                 relative flex items-center
                                 justify-between
                                 px-4 py-2.5 text-sm">
-                                <span className={isSelected ? "text-blue-300 font-medium" : "text-white"}>
+                                <span className={isSelected ? "text-sky-700 font-medium" : "text-slate-800"}>
                                     {option.optionText}
                                 </span>
                                 <span className="
-                                    text-slate-300 font-mono text-xs ml-4">
+                                    text-slate-500 font-mono text-xs ml-4">
                                     {pct}% ({option.voteCount})
                                 </span>
                             </div>
@@ -129,15 +129,15 @@ export default function PollCard({
             </div>
 
             {/* Reactions & Footer */}
-            <div className="flex items-center justify-between pt-2 border-t border-slate-800">
+            <div className="flex items-center justify-between pt-2 border-t border-slate-100">
                 <div className="flex items-center gap-4">
                     <button
                         onClick={() => handleReact(true)}
                         disabled={reacting}
                         className={`flex items-center gap-1.5 text-xs transition-colors ${
                             poll.userReaction === true
-                                ? "text-green-400"
-                                : "text-slate-400 hover:text-green-400"
+                                ? "text-emerald-600"
+                                : "text-slate-400 hover:text-emerald-600"
                         }`}
                     >
                         <ThumbsUp size={14} className={poll.userReaction === true ? "fill-current" : ""} />
@@ -148,8 +148,8 @@ export default function PollCard({
                         disabled={reacting}
                         className={`flex items-center gap-1.5 text-xs transition-colors ${
                             poll.userReaction === false
-                                ? "text-red-400"
-                                : "text-slate-400 hover:text-red-400"
+                                ? "text-red-500"
+                                : "text-slate-400 hover:text-red-500"
                         }`}
                     >
                         <ThumbsDown size={14} className={poll.userReaction === false ? "fill-current" : ""} />
@@ -157,7 +157,7 @@ export default function PollCard({
                     </button>
                 </div>
                 {poll.userVoteOptionId && (
-                    <p className="text-xs text-blue-400">
+                    <p className="text-xs text-sky-600">
                         ✓ Vote recorded
                     </p>
                 )}

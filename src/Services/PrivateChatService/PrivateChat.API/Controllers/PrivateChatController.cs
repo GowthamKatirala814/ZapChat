@@ -66,12 +66,14 @@ public class PrivateChatController : ControllerBase
                 x.ConversationId,
                 x.SenderId,
                 x.SenderName,
-                x.Content,
+                Content = x.IsRemoved ? "This message was removed by moderation." : x.Content,
                 x.SentAt,
                 x.IsRead,
                 x.ParentMessageId,
                 x.AttachmentUrl,
                 x.FileName,
+                x.IsDeleted,
+                x.DeletedAt,
                 reactions = x.Reactions.Select(r => new { r.SenderName, r.Reaction }).ToList()
             })
             .ToListAsync();
@@ -92,5 +94,43 @@ public class PrivateChatController : ControllerBase
         await _context.SaveChangesAsync();
 
         return Ok();
+    }
+
+    /// <summary>
+    /// Returns all conversations for a user with last message, unread count, and other user info.
+    /// </summary>
+    [HttpGet("conversations")]
+    public async Task<IActionResult> GetUserConversations([FromQuery] Guid userId)
+    {
+        var conversations = await _context.Conversations
+            .Where(x => x.User1Id == userId || x.User2Id == userId)
+            .Select(x => new
+            {
+                x.Id,
+                User1Id = x.User1Id,
+                User2Id = x.User2Id,
+                OtherUserId = x.User1Id == userId ? x.User2Id : x.User1Id,
+                LastMessage = x.Messages
+                    .OrderByDescending(m => m.SentAt)
+                    .Select(m => new
+                    {
+                        m.Id,
+                        m.Content,
+                        m.SentAt,
+                        m.SenderId,
+                        m.SenderName,
+                        m.IsRead
+                    })
+                    .FirstOrDefault(),
+                UnreadCount = x.Messages.Count(m => m.SenderId != userId && !m.IsRead),
+                LastActivity = x.Messages
+                    .OrderByDescending(m => m.SentAt)
+                    .Select(m => m.SentAt)
+                    .FirstOrDefault()
+            })
+            .OrderByDescending(x => x.LastActivity)
+            .ToListAsync();
+
+        return Ok(conversations);
     }
 }

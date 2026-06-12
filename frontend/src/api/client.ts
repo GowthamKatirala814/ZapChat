@@ -40,6 +40,14 @@ export const pollApiClient = axios.create({
     }
 });
 
+// ── Admin Service (HTTP port 5145) ──
+export const adminApiClient = axios.create({
+    baseURL: "http://localhost:5145",
+    headers: {
+        "Content-Type": "application/json"
+    }
+});
+
 // Shared JWT interceptor for all clients
 const addAuthInterceptor = (
     client: ReturnType<typeof axios.create>
@@ -74,3 +82,4 @@ addAuthInterceptor(chatApiClient);
 addAuthInterceptor(privateChatApiClient);
 addAuthInterceptor(notificationApiClient);
 addAuthInterceptor(pollApiClient);
+addAuthInterceptor(adminApiClient);

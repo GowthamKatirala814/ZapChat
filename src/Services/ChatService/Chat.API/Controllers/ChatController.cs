@@ -71,11 +71,13 @@ public class ChatController : ControllerBase
             {
                 x.Id,
                 x.AnonymousName,
-                message = x.Content,
+                message = x.IsRemoved ? "This message was removed by moderation." : x.Content,
                 x.SentAt,
                 x.ParentMessageId,
                 x.AttachmentUrl,
                 x.FileName,
+                x.IsDeleted,
+                x.DeletedAt,
                 reactions = x.Reactions.Select(r => new { r.AnonymousName, r.Reaction }).ToList()
             })
             .ToListAsync();
