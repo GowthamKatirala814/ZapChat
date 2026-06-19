@@ -1,6 +1,8 @@
 using System.Net.Http.Json;
 using Admin.Application.DTOs;
 using Admin.Application.Interfaces;
+using Admin.Infrastructure.Persistence.DbContexts;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
 
 namespace Admin.Infrastructure.Services;
@@ -9,15 +11,18 @@ public class UserManagementService : IUserManagementService
 {
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IAuditLogService _auditLogService;
+    private readonly AdminDbContext _adminContext;
     private readonly ILogger<UserManagementService> _logger;
 
     public UserManagementService(
         IHttpClientFactory httpClientFactory,
         IAuditLogService auditLogService,
+        AdminDbContext adminContext,
         ILogger<UserManagementService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _auditLogService = auditLogService;
+        _adminContext = adminContext;
         _logger = logger;
     }
 
@@ -80,6 +85,30 @@ public class UserManagementService : IUserManagementService
         {
             _logger.LogError(ex, "Failed to delete user in Auth Service - UserId: {UserId}", userId);
             throw new InvalidOperationException($"Failed to delete user in Auth Service: {ex.Message}", ex);
+        }
+
+        // Deactivate all room memberships for this user so room member counts are
+        // immediately accurate — deleted users must never appear as room members.
+        try
+        {
+            var memberships = await _adminContext.RoomMemberships
+                .Where(m => m.UserId == userId && m.IsActive)
+                .ToListAsync();
+
+            if (memberships.Any())
+            {
+                foreach (var m in memberships)
+                    m.IsActive = false;
+
+                await _adminContext.SaveChangesAsync();
+                _logger.LogInformation("DeleteUserAsync — deactivated {Count} room membership(s) for user {UserId}", memberships.Count, userId);
+            }
+        }
+        catch (Exception ex)
+        {
+            // Non-fatal — the user is already deleted in AuthService; room counts will
+            // self-correct on next load but we log the failure for visibility.
+            _logger.LogError(ex, "DeleteUserAsync — failed to deactivate room memberships for user {UserId}", userId);
         }
 
         await _auditLogService.LogAsync("UserDeleted", "User", userId.ToString(), adminId);

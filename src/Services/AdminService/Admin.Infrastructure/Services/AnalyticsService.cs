@@ -253,7 +253,8 @@ public class AnalyticsService : IAnalyticsService
             var pollTask = client.GetAsync(
                 $"{_serviceUrls.PollService}/api/admin/analytics/most-voted-polls?top={top}");
             var userTask = client.GetAsync(
-                $"{_serviceUrls.AuthService}/api/auth/users");
+                // Only active, non-admin users can participate in polls
+                $"{_serviceUrls.AuthService}/api/auth/users?excludeAdmin=true&excludeDeleted=true");
 
             await Task.WhenAll(pollTask, userTask);
 

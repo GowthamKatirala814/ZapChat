@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { connection } from "../hubs/chatHub";
-import { getUsers } from "../api/authApi";
+import { getNormalUsers } from "../api/authApi";
 import type { User } from "../types/User";
 import { MessageSquare, Users, Wifi } from "lucide-react";
 
@@ -29,9 +29,9 @@ export default function OnlineUsers({ roomName }: Props) {
     const navigate                    = useNavigate();
     const currentUserId               = localStorage.getItem("userId");
 
-    // Load all registered users
+    // Load all active non-admin platform users (admin and deleted accounts excluded at source)
     useEffect(() => {
-        getUsers().then(setUsers).catch(console.error);
+        getNormalUsers().then(setUsers).catch(console.error);
     }, []);
 
     // Listen for presence updates
@@ -57,6 +57,8 @@ export default function OnlineUsers({ roomName }: Props) {
         return () => { connection.off("OnlineUsersUpdated", handlePresence); };
     }, []);
 
+    // getNormalUsers already excludes admin + deleted, so all entries are valid participants.
+    // Offline = active users who are not currently connected.
     const others  = users.filter(u => u.id !== currentUserId);
     const online  = others.filter(u => onlineNames.has(u.anonymousName));
     const offline = others.filter(u => !onlineNames.has(u.anonymousName));

@@ -68,8 +68,10 @@ public class AdminDbContext : DbContext
             entity.Property(x => x.Status).HasConversion<int>();
             entity.Property(x => x.Reason).HasMaxLength(1000).IsRequired();
             entity.HasIndex(x => x.MessageId);
+            entity.HasIndex(x => x.MessageAuthorId);
             entity.HasIndex(x => x.Status);
             entity.HasIndex(x => x.CreatedAt);
+            entity.HasIndex(x => new { x.MessageId, x.ReportedByUserId }).IsUnique();
         });
 
         // RoomMembership — tracks user-room memberships

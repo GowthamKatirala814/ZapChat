@@ -31,4 +31,22 @@ public class ModerationController : ControllerBase
 
         return Ok(new { message = "Private message successfully removed." });
     }
+
+    public record AutoRemoveUserMessagesRequest(Guid UserId, string AuthorName);
+
+    [HttpPost("auto-remove-user-messages")]
+    public async Task<IActionResult> AutoRemoveUserMessages([FromBody] AutoRemoveUserMessagesRequest request)
+    {
+        var messages = _context.Messages.Where(m => m.SenderId == request.UserId && !m.IsRemoved);
+        
+        foreach (var message in messages)
+        {
+            message.IsRemoved = true;
+            message.RemovedAt = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+
+        return Ok(new { message = "All private messages for the user successfully removed." });
+    }
 }

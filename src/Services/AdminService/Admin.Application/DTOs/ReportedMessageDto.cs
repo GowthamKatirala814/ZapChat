@@ -10,7 +10,7 @@ public class ReportDto
     public Guid MessageAuthorId { get; set; }
     public string MessageAuthorName { get; set; } = string.Empty;
     public MessageType MessageType { get; set; }
-    public string MessageTypeName => MessageType.ToString();
+    public string MessageTypeName { get; set; } = string.Empty;
     public Guid ReportedByUserId { get; set; }
     public string ReportedByUserName { get; set; } = string.Empty;
     public string Reason { get; set; } = string.Empty;

@@ -120,6 +120,7 @@ public class ModerationController : ControllerBase
     [HttpDelete("messages/{messageId:guid}")]
     [ProducesResponseType(StatusCodes.Status204NoContent)]
     [ProducesResponseType(StatusCodes.Status404NotFound)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
     public async Task<IActionResult> DeleteMessage(Guid messageId)
@@ -133,6 +134,10 @@ public class ModerationController : ControllerBase
         catch (KeyNotFoundException)
         {
             return NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(new { message = ex.Message });
         }
     }
 

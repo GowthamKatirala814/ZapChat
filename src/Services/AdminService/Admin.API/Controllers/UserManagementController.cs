@@ -91,10 +91,15 @@ public class UserManagementController : ControllerBase
             _logger.LogInformation("DELETE USER - Successfully deleted user {UserId}", id);
             return NoContent();
         }
+        catch (InvalidOperationException ex)
+        {
+            _logger.LogWarning(ex, "DELETE USER - Invalid operation: {Message}", ex.Message);
+            return BadRequest(new { message = ex.Message });
+        }
         catch (Exception ex)
         {
             _logger.LogError(ex, "DELETE USER - Failed to delete user {UserId}", id);
-            return StatusCode(500, new { message = ex.Message });
+            return StatusCode(500, new { message = "An internal error occurred." });
         }
     }
 

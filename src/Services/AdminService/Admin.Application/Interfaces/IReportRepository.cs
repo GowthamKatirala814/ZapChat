@@ -10,6 +10,7 @@ public interface IReportRepository
     Task<IEnumerable<Report>> GetAllAsync(ReportStatus? statusFilter = null, bool? isAutoRemoved = null, int page = 1, int pageSize = 50);
     Task<IEnumerable<Report>> GetByMessageIdAsync(Guid messageId);
     Task<IEnumerable<Report>> GetByReporterIdAsync(Guid reporterId);
+    Task<IEnumerable<Report>> GetPendingByAuthorIdAsync(Guid authorId);
     Task UpdateAsync(Report report);
     Task<int> GetCountByMessageIdAsync(Guid messageId);
     Task<int> GetTotalCountAsync(ReportStatus? statusFilter = null);

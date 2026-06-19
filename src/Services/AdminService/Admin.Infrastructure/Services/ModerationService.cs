@@ -63,6 +63,13 @@ public class ModerationService : IModerationService
         _logger.LogInformation("Fetched data: MessageContent={MessageContent}, AuthorId={AuthorId}, AuthorName={AuthorName}, ReporterName={ReporterName}", 
             messageContent, messageAuthorId, messageAuthorName, reporterName);
 
+        // Enforce rule: A user can report a particular message only once
+        var existingReports = await _reportRepository.GetByMessageIdAsync(request.MessageId);
+        if (existingReports.Any(r => r.ReportedByUserId == request.ReportedByUserId))
+        {
+            throw new InvalidOperationException("You have already reported this message.");
+        }
+
         var report = new Report
         {
             Id = Guid.NewGuid(),
@@ -83,9 +90,6 @@ public class ModerationService : IModerationService
             report.Id, report.MessageContent, report.MessageAuthorName, report.ReportedByUserName);
 
         await _reportRepository.AddAsync(report);
-
-        // Check threshold — if reports on this message reach the limit and auto-delete is on
-        await CheckAndApplyThresholdAsync(request.MessageId);
 
         return MapToDto(report);
     }
@@ -114,9 +118,16 @@ public class ModerationService : IModerationService
 
     public async Task DeleteMessageAsync(Guid messageId, Guid adminId)
     {
-        // Mark all reports for this message as reviewed
         var reports = await _reportRepository.GetByMessageIdAsync(messageId);
-        foreach (var report in reports.Where(r => r.Status == ReportStatus.Pending))
+        var pendingReports = reports.Where(r => r.Status == ReportStatus.Pending).ToList();
+
+        if (reports.Any() && !pendingReports.Any())
+        {
+            throw new InvalidOperationException("This message has already been removed or its reports have been resolved.");
+        }
+
+        // Mark all reports for this message as reviewed
+        foreach (var report in pendingReports)
         {
             report.Status = ReportStatus.Reviewed;
             await _reportRepository.UpdateAsync(report);
@@ -129,9 +140,10 @@ public class ModerationService : IModerationService
 
     public async Task DeleteUserAsync(Guid userId, Guid adminId)
     {
-        // Mark all reports by this user as reviewed
-        var reports = await _reportRepository.GetByReporterIdAsync(userId);
-        foreach (var report in reports.Where(r => r.Status == ReportStatus.Pending))
+        // Mark all pending reports whose message was authored by this user as Reviewed.
+        // This removes them from the Pending queue immediately so admins don't see ghost entries.
+        var affectedReports = await _reportRepository.GetPendingByAuthorIdAsync(userId);
+        foreach (var report in affectedReports)
         {
             report.Status = ReportStatus.Reviewed;
             await _reportRepository.UpdateAsync(report);
@@ -262,52 +274,7 @@ public class ModerationService : IModerationService
         return ("Unknown", "");
     }
 
-    /// <summary>
-    /// When report count for a message reaches the configured threshold,
-    /// remove the message and soft delete the offending user automatically.
-    /// </summary>
-    private async Task CheckAndApplyThresholdAsync(Guid messageId)
-    {
-        var settings = await _settingsRepository.GetOrCreateDefaultAsync();
 
-        if (!settings.AutoDeleteEnabled)
-            return;
-
-        var reportCount = await _reportRepository.GetCountByMessageIdAsync(messageId);
-
-        if (reportCount < settings.ReportThreshold)
-            return;
-
-        // Get the message author from the first report
-        var firstReport = await _reportRepository.GetByMessageIdAsync(messageId);
-        var messageAuthorId = firstReport?.FirstOrDefault()?.MessageAuthorId;
-
-        // Auto-remove: mark all pending reports for this message
-        var pendingReports = await _reportRepository.GetByMessageIdAsync(messageId);
-
-        foreach (var r in pendingReports.Where(r => r.Status == ReportStatus.Pending))
-        {
-            r.Status = ReportStatus.Reviewed;
-            r.IsAutoRemoved = true;
-            await _reportRepository.UpdateAsync(r);
-        }
-
-        // Create audit entries for auto-moderation
-        await _auditLogService.LogAsync(
-            "AutoMessageRemoved",
-            "Message",
-            messageId.ToString(),
-            Guid.Empty);
-
-        if (messageAuthorId.HasValue)
-        {
-            await _auditLogService.LogAsync(
-                "AutoUserDeleted",
-                "User",
-                messageAuthorId.Value.ToString(),
-                Guid.Empty);
-        }
-    }
 
     private static ReportDto MapToDto(Report r) => new()
     {
@@ -316,6 +283,8 @@ public class ModerationService : IModerationService
         MessageContent = r.MessageContent ?? "Message content unavailable",
         MessageAuthorId = r.MessageAuthorId,
         MessageAuthorName = r.MessageAuthorName ?? "Unknown",
+        MessageType = r.MessageType,
+        MessageTypeName = r.MessageType.ToString(),
         ReportedByUserId = r.ReportedByUserId,
         ReportedByUserName = r.ReportedByUserName ?? "Unknown",
         Reason = r.Reason,
@@ -324,6 +293,7 @@ public class ModerationService : IModerationService
         StatusName = r.Status.ToString(),
         IsAutoRemoved = r.IsAutoRemoved
     };
+
 
     private static ModerationSettingsDto MapSettingsToDto(ModerationSettings s) => new()
     {

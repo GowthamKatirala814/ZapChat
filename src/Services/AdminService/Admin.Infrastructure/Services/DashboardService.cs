@@ -78,13 +78,15 @@ public class DashboardService : IDashboardService
         try
         {
             var client = _httpClientFactory.CreateClient();
-            var response = await client.GetAsync($"{_serviceUrls.AuthService}/api/auth/users");
+            // excludeAdmin=true ensures the administrator account is never counted
+            // in any user statistic — admin is a system account, not a platform user.
+            var response = await client.GetAsync($"{_serviceUrls.AuthService}/api/auth/users?excludeAdmin=true");
             Console.WriteLine($"[DashboardService] Auth API response status: {response.StatusCode}");
 
             if (response.IsSuccessStatusCode)
             {
                 var users = await response.Content.ReadFromJsonAsync<List<AuthUserRecord>>();
-                Console.WriteLine($"[DashboardService] Users fetched: {users?.Count ?? 0}");
+                Console.WriteLine($"[DashboardService] Users fetched (admin excluded): {users?.Count ?? 0}");
 
                 if (users != null)
                 {
@@ -94,16 +96,12 @@ public class DashboardService : IDashboardService
 
                     Console.WriteLine($"[DashboardService] Blocked users count: {blockedUserIds.Count}");
 
-                    foreach (var u in users)
-                    {
-                        var isBlocked = blockedUserIds.Contains(u.Id);
-                        Console.WriteLine($"[DashboardService] User {u.Id}: IsDeleted={u.IsDeleted}, IsBlocked={isBlocked}");
-                    }
-
-                    // Active = NOT deleted AND NOT blocked
-                    var activeUsers = users.Where(u => !u.IsDeleted && !blockedUserIds.Contains(u.Id)).Count();
-                    var deletedUsers = users.Where(u => u.IsDeleted).Count();
-                    var totalUsers = users.Count;
+                    // TotalUsers  = all non-admin accounts (active + deleted)
+                    // ActiveUsers = non-deleted (blocked are a subset of active — they can't log in but are not erased)
+                    // DeletedUsers = soft-deleted accounts
+                    var totalUsers   = users.Count;
+                    var activeUsers  = users.Count(u => !u.IsDeleted);
+                    var deletedUsers = users.Count(u => u.IsDeleted);
                     var blockedUsers = blockedUserIds.Count;
 
                     Console.WriteLine($"[DashboardService] Calculated: Total={totalUsers}, Active={activeUsers}, Deleted={deletedUsers}, Blocked={blockedUsers}");
@@ -121,6 +119,12 @@ public class DashboardService : IDashboardService
             Console.WriteLine($"[DashboardService] Exception in GetUserStatsAsync: {ex.Message}");
         }
         return (0, 0, 0, 0);
+    }
+
+    public async Task<int> GetActiveUserCountAsync()
+    {
+        var (_, activeUsers, _, _) = await GetUserStatsAsync();
+        return activeUsers;
     }
 
     /// <summary>

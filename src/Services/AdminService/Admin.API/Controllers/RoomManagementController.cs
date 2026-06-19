@@ -145,6 +145,19 @@ public class RoomManagementController : ControllerBase
         }
     }
 
+    /// <summary>
+    /// Internal endpoint called by AuthService when a new user completes registration.
+    /// Syncs the newly registered user into all existing default rooms.
+    /// </summary>
+    [HttpPost("sync-user/{userId:guid}")]
+    [AllowAnonymous]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> SyncUserRooms(Guid userId)
+    {
+        await _roomService.AddUserToAllRoomsAsync(userId);
+        return Ok();
+    }
+
     private Guid GetAdminId()
     {
         var idClaim = User.FindFirstValue(ClaimTypes.NameIdentifier);

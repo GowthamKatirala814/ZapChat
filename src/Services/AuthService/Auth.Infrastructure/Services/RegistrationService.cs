@@ -1,8 +1,11 @@
+using System.Net.Http;
+using System.Security.Cryptography;
 using Auth.Application.DTOs;
 using Auth.Application.Interfaces;
 using Auth.Domain.Entities;
 using Auth.Infrastructure.Persistence.DbContexts;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace Auth.Infrastructure.Services;
 
@@ -11,15 +14,21 @@ public class RegistrationService : IRegistrationService
     private readonly AuthDbContext _context;
     private readonly IEmailService _emailService;
     private readonly IPasswordHasher _passwordHasher;
+    private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<RegistrationService> _logger;
 
     public RegistrationService(
         AuthDbContext context,
         IEmailService emailService,
-        IPasswordHasher passwordHasher)
+        IPasswordHasher passwordHasher,
+        IHttpClientFactory httpClientFactory,
+        ILogger<RegistrationService> logger)
     {
         _context = context;
         _emailService = emailService;
         _passwordHasher = passwordHasher;
+        _httpClientFactory = httpClientFactory;
+        _logger = logger;
     }
 
     // ── Step 1 ───────────────────────────────────────────────────────────────
@@ -217,6 +226,21 @@ public class RegistrationService : IRegistrationService
         _context.RegistrationOtps.Remove(otp);
 
         await _context.SaveChangesAsync();
+
+        // Inform AdminService to sync this new user into default rooms
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            var response = await client.PostAsync($"http://localhost:5002/api/admin/rooms/sync-user/{user.Id}", null);
+            if (!response.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("Failed to sync new user {UserId} to Admin rooms. Status: {Status}", user.Id, response.StatusCode);
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Error syncing new user {UserId} to Admin rooms.", user.Id);
+        }
 
         return new CompleteRegistrationResponseDto
         {

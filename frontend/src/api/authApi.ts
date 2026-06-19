@@ -63,6 +63,17 @@ export const getUsers = async (): Promise<User[]> => {
     return response.data as User[];
 };
 
+/**
+ * Returns only active, non-admin users.
+ * Use this everywhere a list of platform participants is needed
+ * (sidebar members, online/offline counts, poll denominators, etc.)
+ * Admin and soft-deleted accounts are excluded at the source.
+ */
+export const getNormalUsers = async (): Promise<User[]> => {
+    const response = await api.get("/api/auth/users?excludeAdmin=true&excludeDeleted=true");
+    return response.data as User[];
+};
+
 export const getUserById = async (userId: string): Promise<User> => {
     const response = await api.get(`/api/auth/users/${userId}`);
     return response.data as User;

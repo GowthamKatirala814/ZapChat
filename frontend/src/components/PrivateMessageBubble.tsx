@@ -102,7 +102,7 @@ export default function PrivateMessageBubble({ message, onReply, onReact, onDele
                             background: isMe ? '#DBEAFE' : '#F1F5F9',
                             color: '#94A3B8'
                         }}>
-                        {isMe ? "You deleted this message" : "This message was deleted"}
+                    {isMe ? "You deleted this message" : "Message removed by moderation."}
                     </div>
                 ) : (
                     <div className="relative flex items-end gap-1">

@@ -43,8 +43,12 @@ export default function ReportMessageModal({ messageId, messageType, onClose }: 
                 setToast(null);
                 onClose();
             }, 1800);
-        } catch {
-            setToast({ type: "error", message: "Failed to submit report. Please try again." });
+        } catch (error: any) {
+            if (error.response?.status === 409) {
+                setToast({ type: "error", message: "You have already reported this message. A message can only be reported once by the same user." });
+            } else {
+                setToast({ type: "error", message: "Failed to submit report. Please try again." });
+            }
         } finally {
             setSubmitting(false);
         }

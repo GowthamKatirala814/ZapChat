@@ -151,7 +151,7 @@ export const deleteReportedMessage = async (messageId: string): Promise<void> =>
 };
 
 export const deleteReportedUser = async (userId: string): Promise<void> => {
-    await adminApiClient.delete(`/api/admin/users/${userId}`);
+    await adminApiClient.delete(`/api/admin/users/${userId}`, { data: { reason: "Moderation action: User removed." } });
 };
 
 export const getModerationSettings = async (): Promise<ModerationSettings> => {

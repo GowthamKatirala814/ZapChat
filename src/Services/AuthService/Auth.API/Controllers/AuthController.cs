@@ -116,9 +116,20 @@ public class AuthController : ControllerBase
     }
 
     [HttpGet("users")]
-    public async Task<IActionResult> GetUsers()
+    public async Task<IActionResult> GetUsers(
+        [FromQuery] bool excludeAdmin = false,
+        [FromQuery] bool excludeDeleted = false)
     {
-        var users = await _context.Users
+        var adminEmail = _configuration["AdminSettings:AdminEmail"];
+        var query = _context.Users.AsQueryable();
+
+        if (excludeAdmin && !string.IsNullOrWhiteSpace(adminEmail))
+            query = query.Where(u => u.Email != adminEmail);
+
+        if (excludeDeleted)
+            query = query.Where(u => !u.IsDeleted);
+
+        var users = await query
             .Select(x => new
             {
                 x.Id,
@@ -151,6 +162,28 @@ public class AuthController : ControllerBase
         {
             id = user.Id,
             anonymousName = anonymousProfile?.AnonymousName ?? "Anonymous",
+            email = user.Email
+        });
+    }
+
+    [HttpGet("users/by-name/{anonymousName}")]
+    [AllowAnonymous]
+    public async Task<IActionResult> GetUserByAnonymousName(string anonymousName)
+    {
+        var anonymousProfile = await _context.AnonymousProfiles
+            .FirstOrDefaultAsync(a => a.AnonymousName == anonymousName);
+
+        if (anonymousProfile == null)
+            return NotFound();
+
+        var user = await _context.Users.FindAsync(anonymousProfile.UserId);
+        if (user == null)
+            return NotFound();
+
+        return Ok(new
+        {
+            id = user.Id,
+            anonymousName = anonymousProfile.AnonymousName,
             email = user.Email
         });
     }

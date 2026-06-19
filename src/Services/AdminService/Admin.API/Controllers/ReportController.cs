@@ -70,12 +70,41 @@ public class ReportsController : ControllerBase
         // Fetch message details from the appropriate service
         var (messageContent, messageAuthorId, messageAuthorName) = await GetMessageDetailsAsync(request.MessageId, request.MessageType);
 
+        // Fallback: If ChatService didn't provide an ID but did provide a name, resolve the ID
+        if (messageAuthorId == Guid.Empty && !string.IsNullOrWhiteSpace(messageAuthorName) && messageAuthorName != "Unknown")
+        {
+            messageAuthorId = await ResolveUserIdByAnonymousNameAsync(messageAuthorName);
+        }
+
+        // Reject report if the message does not exist or has been deleted.
+        // A Guid.Empty authorId means the upstream service returned no matching message.
+        // Accepting such reports would create orphan records with no author, which corrupt
+        // the unique-reporter-per-author threshold calculation in auto-moderation.
+        if (messageAuthorId == Guid.Empty)
+        {
+            _logger.LogWarning(
+                "Report rejected — message {MessageId} not found or already deleted.",
+                request.MessageId);
+            return BadRequest(new { message = "Cannot report a message that does not exist or has already been deleted." });
+        }
+
         // Fetch reporter details from Auth Service
         var (reporterName, reporterEmail) = await GetUserDetailsAsync(request.ReportedByUserId);
 
         _logger.LogInformation(
             "Fetched data: MessageContent={MessageContent}, AuthorId={AuthorId}, AuthorName={AuthorName}, ReporterName={ReporterName}",
             messageContent, messageAuthorId, messageAuthorName, reporterName);
+
+        // Enforce rule: one user can report a particular message only once,
+        // regardless of reason. The unique DB index (IX_Reports_MessageId_ReportedByUserId)
+        // also enforces this at the database level as a second line of defence.
+        if (await _context.Reports.AnyAsync(r => r.MessageId == request.MessageId && r.ReportedByUserId == request.ReportedByUserId))
+        {
+            _logger.LogWarning(
+                "Duplicate report rejected — UserId={UserId} already reported MessageId={MessageId}.",
+                request.ReportedByUserId, request.MessageId);
+            return Conflict(new { message = "You have already reported this message." });
+        }
 
         var report = new Report
         {
@@ -158,6 +187,29 @@ public class ReportsController : ControllerBase
         }
 
         return ("Message content unavailable", Guid.Empty, "Unknown");
+    }
+
+    private async Task<Guid> ResolveUserIdByAnonymousNameAsync(string anonymousName)
+    {
+        if (string.IsNullOrWhiteSpace(anonymousName) || anonymousName == "Unknown")
+            return Guid.Empty;
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient("AuthService");
+            var url = $"api/auth/users/by-name/{Uri.EscapeDataString(anonymousName)}";
+            var response = await client.GetAsync(url);
+            if (response.IsSuccessStatusCode)
+            {
+                var user = await response.Content.ReadFromJsonAsync<UserDetail>();
+                return user?.Id ?? Guid.Empty;
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to resolve UserId for AnonymousName {AnonymousName}", anonymousName);
+        }
+        return Guid.Empty;
     }
 
     private async Task<(string name, string email)> GetUserDetailsAsync(Guid userId)

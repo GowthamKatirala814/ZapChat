@@ -16,6 +16,7 @@ public class RoomManagementService : IRoomManagementService
     private readonly IAuditLogService _auditLogService;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ServiceUrlsOptions _serviceUrls;
+    private readonly IDashboardService _dashboardService;
 
     public RoomManagementService(
         IRoomManagementRepository repository,
@@ -24,7 +25,8 @@ public class RoomManagementService : IRoomManagementService
         IReportRepository reportRepository,
         IAuditLogService auditLogService,
         IHttpClientFactory httpClientFactory,
-        IOptions<ServiceUrlsOptions> serviceUrls)
+        IOptions<ServiceUrlsOptions> serviceUrls,
+        IDashboardService dashboardService)
     {
         _repository = repository;
         _membershipRepository = membershipRepository;
@@ -33,6 +35,7 @@ public class RoomManagementService : IRoomManagementService
         _auditLogService = auditLogService;
         _httpClientFactory = httpClientFactory;
         _serviceUrls = serviceUrls.Value;
+        _dashboardService = dashboardService;
     }
 
     public async Task<IEnumerable<RoomDto>> GetRoomsAsync(bool includeDeleted = false)
@@ -275,12 +278,9 @@ public class RoomManagementService : IRoomManagementService
 
     private async Task<RoomDto> MapToDtoWithMembersAsync(RoomManagement r)
     {
-        // Get blocked user IDs to exclude from count
-        var blockedUsers = await _blockedUserRepository.GetAllAsync();
-        var blockedUserIds = blockedUsers.Select(b => b.UserId).ToList();
-
-        // Get member count excluding blocked users
-        var memberCount = await _membershipRepository.GetActiveMemberCountAsync(r.Id, blockedUserIds);
+        // Centralized logic: use the exact same Active Users count from the Dashboard
+        // to guarantee 100% synchronization and a single source of truth across the UI.
+        var memberCount = await _dashboardService.GetActiveUserCountAsync();
 
         return new RoomDto
         {

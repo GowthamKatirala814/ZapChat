@@ -6,4 +6,5 @@ public interface IDashboardService
 {
     Task<DashboardStatsDto> GetStatsAsync();
     Task<IEnumerable<RecentActivityDto>> GetRecentActivityAsync(int count = 20);
+    Task<int> GetActiveUserCountAsync();
 }

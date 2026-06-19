@@ -9,10 +9,12 @@ namespace Auth.API.Controllers;
 public class AdminController : ControllerBase
 {
     private readonly AuthDbContext _context;
+    private readonly IConfiguration _configuration;
 
-    public AdminController(AuthDbContext context)
+    public AdminController(AuthDbContext context, IConfiguration configuration)
     {
         _context = context;
+        _configuration = configuration;
     }
 
     [HttpGet("users/summary")]
@@ -35,8 +37,13 @@ public class AdminController : ControllerBase
 
         var since = DateTime.UtcNow.AddDays(-days).Date;
 
-        var counts = await _context.Users
-            .Where(u => u.CreatedAt >= since)
+        var adminEmail = _configuration["AdminSettings:AdminEmail"];
+        var query = _context.Users.Where(u => u.CreatedAt >= since);
+
+        if (!string.IsNullOrWhiteSpace(adminEmail))
+            query = query.Where(u => u.Email != adminEmail);
+
+        var counts = await query
             .GroupBy(u => u.CreatedAt.Date)
             .Select(g => new { date = g.Key, count = g.Count() })
             .ToListAsync();

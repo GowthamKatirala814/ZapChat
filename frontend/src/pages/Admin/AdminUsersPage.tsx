@@ -129,8 +129,17 @@ export default function AdminUsersPage() {
         }
     };
 
-    const activeUsers = users.filter(u => !u.isDeleted);
-    const deletedUsers = users.filter(u => u.isDeleted);
+    const sortedUsers = [...users].sort((a, b) => {
+        if (a.isDeleted === b.isDeleted) {
+            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
+            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
+            return dateB - dateA;
+        }
+        return a.isDeleted ? 1 : -1;
+    });
+
+    const activeUsers = sortedUsers.filter(u => !u.isDeleted);
+    const deletedUsers = sortedUsers.filter(u => u.isDeleted);
 
     return (
         <div className="p-6 space-y-5">
@@ -199,12 +208,12 @@ export default function AdminUsersPage() {
                                     ))}
                                 </tr>
                             ))
-                        ) : users.length === 0 ? (
+                        ) : sortedUsers.length === 0 ? (
                             <tr>
                                 <td colSpan={6} className="px-5 py-10 text-center text-slate-500">No users found</td>
                             </tr>
                         ) : (
-                            users.map(u => (
+                            sortedUsers.map(u => (
                                 <tr key={u.id} className="hover:bg-slate-800/30 transition-colors">
                                     <td className="px-5 py-3.5">
                                         <div className="flex items-center gap-3">

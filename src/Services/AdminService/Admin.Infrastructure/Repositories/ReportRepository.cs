@@ -63,6 +63,17 @@ public class ReportRepository : IReportRepository
             .ToListAsync();
     }
 
+    /// <summary>
+    /// Returns all Pending reports whose message was authored by the given user.
+    /// Used when deleting a user to immediately clear their reports from the Pending queue.
+    /// </summary>
+    public async Task<IEnumerable<Report>> GetPendingByAuthorIdAsync(Guid authorId)
+    {
+        return await _context.Reports
+            .Where(x => x.MessageAuthorId == authorId && x.Status == ReportStatus.Pending)
+            .ToListAsync();
+    }
+
     public async Task UpdateAsync(Report report)
     {
         _context.Reports.Update(report);
