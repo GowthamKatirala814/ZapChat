@@ -1,25 +1,26 @@
-import { useEffect, useRef, useState } from "react";
-import type { Dispatch, SetStateAction } from "react";
-import { useNavigate } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+// Removed unused Dispatch, SetStateAction
+import { useNavigate, useLocation } from "react-router-dom";
 import {
     Hash,
-    MessageSquare,
     LogOut,
     Search,
     ChevronDown,
     ChevronRight,
 } from "lucide-react";
 import { getUsers } from "../api/authApi";
-import { getRooms, type Room } from "../api/chatApi";
+import { getRooms, markRoomAsRead, type Room } from "../api/chatApi";
+import { getConversations, markConversationAsRead } from "../api/privateChatApi";
+import { markAllAsRead } from "../api/notificationApi";
 import { connection as chatHubConnection } from "../hubs/chatHub";
 import { getPrivateChatConnection } from "../hubs/privateChatHub";
 import type { User } from "../types/User";
 import { logout, getAnonymousName } from "../utils/auth";
-import type { Message } from "../types/Message";
+// Removed Message import
 
 interface Props {
     selectedRoom: string | null;
-    setSelectedRoom: Dispatch<SetStateAction<string | null>>;
+    setSelectedRoom: ((room: string | null) => void) | React.Dispatch<React.SetStateAction<string | null>>;
 }
 
 const AVATAR_GRADIENTS = [
@@ -38,6 +39,7 @@ function avatarGradient(name: string) {
 
 export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
     const navigate    = useNavigate();
+    const location    = useLocation();
     const [users, setUsers]               = useState<User[]>([]);
     const [rooms, setRooms]               = useState<Room[]>([]);
     const [roomsLoading, setRoomsLoading] = useState(true);
@@ -45,11 +47,9 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
     const [dmOpen, setDmOpen]             = useState(true);
     const [channelsOpen, setChannelsOpen] = useState(true);
 
-    // Unread & Last Message states
+    // Unread states
     const [unread, setUnread]                                   = useState<Map<string, number>>(new Map());
-    const [roomLastMessage, setRoomLastMessage]                 = useState<Map<string, { text: string; sentAt: string }>>(new Map());
     const [dmOrder, setDmOrder]                                 = useState<string[]>([]);
-    const [dmLastMessage, setDmLastMessage]                     = useState<Map<string, { text: string; sentAt: string }>>(new Map());
     const [dmUnread, setDmUnread]                               = useState<Map<string, number>>(new Map());
 
     const myName       = getAnonymousName();
@@ -57,10 +57,55 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
     const currentUserId = localStorage.getItem("userId") ?? "";
 
     const joinedRoomRef = useRef<string | null>(null);
+    const convIdToUserIdRef = useRef<Map<string, string>>(new Map());
+
+    // ── Seed DM list from API on mount (Bug 1 fix) ─────────────────────────────
+    // This ensures the list is ordered by LastMessageAt desc even after a fresh
+    // login/refresh, before any SignalR events arrive.
+    useEffect(() => {
+        if (!currentUserId) return;
+        getConversations(currentUserId)
+            .then(convs => {
+                // API already returns them in LastMessageAt desc order
+                const orderedIds: string[] = [];
+                const lastMsgMap = new Map<string, { text: string; sentAt: string }>();
+                const unreadMap = new Map<string, number>();
+
+                for (const conv of convs) {
+                    const otherId = conv.otherUserId;
+                    if (!otherId) continue;
+
+                    if (conv.id) {
+                        convIdToUserIdRef.current.set(conv.id, otherId);
+                    }
+
+                    orderedIds.push(otherId);
+
+                    if (conv.lastMessage?.content) {
+                        const text = conv.lastMessage.content.length > 40
+                            ? conv.lastMessage.content.substring(0, 40) + "..."
+                            : conv.lastMessage.content;
+                        lastMsgMap.set(otherId, {
+                            text,
+                            sentAt: conv.lastMessage.sentAt ?? ""
+                        });
+                    }
+
+                    if (conv.unreadCount > 0) {
+                        unreadMap.set(otherId, conv.unreadCount);
+                    }
+                }
+
+                setDmOrder(orderedIds);
+                setDmUnread(unreadMap);
+            })
+            .catch(() => {/* non-critical – degrade gracefully */});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUserId]);
 
     useEffect(() => {
         getUsers()
-            .then(data => setUsers(data.filter(u => u.id !== currentUserId)))
+            .then(data => setUsers(data)) // Fixed: Include current user so self-DMs work
             .catch(console.error);
     }, [currentUserId]);
 
@@ -71,8 +116,31 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
     const loadRooms = async () => {
         setRoomsLoading(true);
         try {
-            const data = await getRooms();
-            setRooms(data);
+            // Pass userId so the backend joins ChatRoomReadState and returns
+            // the real persisted unread count for each room (fixes badge on login).
+            const data = await getRooms(currentUserId || undefined);
+            const sorted = data.sort((a: any, b: any) => {
+                const aTime = a.lastMessageAt ? new Date(a.lastMessageAt).getTime() : 0;
+                const bTime = b.lastMessageAt ? new Date(b.lastMessageAt).getTime() : 0;
+                if (aTime !== bTime) return bTime - aTime;
+                return a.name.localeCompare(b.name);
+            });
+            setRooms(sorted);
+
+            const lastMsgMap = new Map<string, { text: string; sentAt: string }>();
+            const unreadMap = new Map<string, number>();
+
+            sorted.forEach((r: any) => {
+                if (r.lastMessagePreview) {
+                    lastMsgMap.set(r.name, { text: r.lastMessagePreview, sentAt: r.lastMessageAt });
+                }
+                // Read the real persisted unread count from the DB (via ChatRoomReadState)
+                if (r.unreadCount > 0) {
+                    unreadMap.set(r.name, r.unreadCount);
+                }
+            });
+
+            setUnread(unreadMap);
         } catch (err) {
             console.error("Failed to load rooms:", err);
         } finally {
@@ -84,36 +152,58 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
         joinedRoomRef.current = selectedRoom;
     }, [selectedRoom]);
 
+    // ── Auto-clear room unread when selected room changes ───────────────────────
+    // Handles direct URL navigation and page mount – not just sidebar clicks.
+    useEffect(() => {
+        if (!selectedRoom || !currentUserId) return;
+        setUnread(prev => {
+            if ((prev.get(selectedRoom) ?? 0) === 0) return prev;
+            const next = new Map(prev);
+            next.set(selectedRoom, 0);
+            return next;
+        });
+        markRoomAsRead(selectedRoom, currentUserId).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [selectedRoom]);
+
+    // ── Auto-clear DM unread when URL is /dm/:userId ────────────────────────────
+    // Handles page refresh, browser back, direct navigation.
+    useEffect(() => {
+        const match = location.pathname.match(/^\/dm\/([-\w]+)$/);
+        if (!match || !currentUserId) return;
+        const activeOtherUserId = match[1];
+        setDmUnread(prev => {
+            if ((prev.get(activeOtherUserId) ?? 0) === 0) return prev;
+            const next = new Map(prev);
+            next.set(activeOtherUserId, 0);
+            return next;
+        });
+        markConversationAsRead(activeOtherUserId, currentUserId).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [location.pathname]);
+
     // ── Rooms SignalR Integration ──
     useEffect(() => {
-        const handleReceiveMessage = (data: Message) => {
+        const handleReceiveMessage = () => {
             const roomName = joinedRoomRef.current;
             if (!roomName) return;
 
             setRooms(prev => {
                 const idx = prev.findIndex(r => r.name === roomName);
-                if (idx <= 0) return prev;
+                if (idx < 0) return prev;
                 const next = [...prev];
                 const [moved] = next.splice(idx, 1);
                 next.unshift(moved);
                 return next;
             });
 
-            setRoomLastMessage(prev => {
-                const next = new Map(prev);
-                const textPreview = data.message.length > 40 ? data.message.substring(0, 40) + "..." : data.message;
-                next.set(roomName, { 
-                    text: `${data.anonymousName}: ${textPreview}`, 
-                    sentAt: data.sentAt 
-                });
-                return next;
-            });
         };
 
         const handleGlobalNotification = (data: { roomName: string, message: string, createdAt: string }) => {
             const roomName = data.roomName;
             if (!roomName) return;
 
+            // Move room to top of list (ordering)
             setRooms(prev => {
                 const idx = prev.findIndex(r => r.name === roomName);
                 if (idx <= 0) return prev;
@@ -123,20 +213,19 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
                 return next;
             });
 
-            setRoomLastMessage(prev => {
-                const next = new Map(prev);
-                const textPreview = data.message.length > 40 ? data.message.substring(0, 40) + "..." : data.message;
-                next.set(roomName, { 
-                    text: textPreview, 
-                    sentAt: data.createdAt 
-                });
-                return next;
-            });
+            // Do NOT increment client-side unread here.
+            // The backend already incremented ChatRoomReadState.UnreadCount for every
+            // non-sender member. The RoomUpdated event delivers the authoritative count.
+        };
 
-            if (roomName !== joinedRoomRef.current) {
+        const handleRoomUpdated = (data: any) => {
+            const roomName: string = data.roomName;
+            const unreadCount: number = data.unreadCount ?? -1;
+
+            if (unreadCount !== -1) {
                 setUnread(prev => {
                     const next = new Map(prev);
-                    next.set(roomName, (next.get(roomName) ?? 0) + 1);
+                    next.set(roomName, unreadCount);
                     return next;
                 });
             }
@@ -144,71 +233,94 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
 
         chatHubConnection.on("ReceiveMessage", handleReceiveMessage);
         chatHubConnection.on("GlobalNotification", handleGlobalNotification);
+        chatHubConnection.on("RoomUpdated", handleRoomUpdated);
         return () => {
             chatHubConnection.off("ReceiveMessage", handleReceiveMessage);
             chatHubConnection.off("GlobalNotification", handleGlobalNotification);
+            chatHubConnection.off("RoomUpdated", handleRoomUpdated);
         };
-    }, []);
+    }, [currentUserId]);
 
     // ── Private Chat SignalR Integration ──
     useEffect(() => {
         const pConn = getPrivateChatConnection();
-        const handlePrivateMessage = (data: any) => {
-            const senderId = data.senderId;
-            const textPreview = data.content.length > 40 ? data.content.substring(0, 40) + "..." : data.content;
 
+        // ReceivePrivateMessage: update last-message preview only.
+        // Unread count is NOT incremented here — the server sends the authoritative
+        // count via ConversationUpdated which fires right after this event.
+        // Incrementing here AND trusting the server value causes a double-count bug.
+        const handlePrivateMessage = () => {
+            // Handled by ConversationUpdated
+        };
+
+        // ConversationUpdated: the single source of truth for reordering (Bug 2 & 3 fix).
+        // Backend sends this to BOTH sender and receiver after every message.
+        // unreadCount === -1 means "don't update unread" (sent by us, not received).
+        const handleConversationUpdated = (data: any) => {
+            const convId: string = data.conversationId;
+            const unreadCount: number = data.unreadCount ?? -1;
+
+            // We need to map conversationId → otherUserId.
+            // We do this by checking the dmLastMessage map (already keyed by userId)
+            // OR by inspecting the users list. The cleanest way is to keep a ref
+            // of conversationId → otherUserId. We build it from the dmOrder + dmLastMessage,
+            // but the simplest approach here is to find the user from the pathname or a
+            // stored map. We'll use a conversation-id-to-userId map maintained in a ref.
+            const otherUserId = convIdToUserIdRef.current.get(convId);
+            if (!otherUserId) return;
+
+            // Move conversation to top of list (Bug 2 fix: reorder only on real event)
             setDmOrder(prev => {
-                const next = prev.filter(id => id !== senderId);
-                next.unshift(senderId);
+                const next = prev.filter(id => id !== otherUserId);
+                next.unshift(otherUserId);
                 return next;
             });
 
-            setDmLastMessage(prev => {
-                const next = new Map(prev);
-                next.set(senderId, {
-                    text: textPreview,
-                    sentAt: data.sentAt
-                });
-                return next;
-            });
-
-            if (!window.location.pathname.includes(`/dm/${senderId}`)) {
+            // Only set unread count if unreadCount !== -1 (Bug 3 fix)
+            if (unreadCount !== -1) {
                 setDmUnread(prev => {
                     const next = new Map(prev);
-                    next.set(senderId, (next.get(senderId) ?? 0) + 1);
+                    next.set(otherUserId, unreadCount);
                     return next;
                 });
             }
         };
 
         pConn.on("ReceivePrivateMessage", handlePrivateMessage);
-        
+        pConn.on("ConversationUpdated", handleConversationUpdated);
+
         if (pConn.state === "Disconnected") {
             pConn.start().catch(() => {});
         }
 
         return () => {
             pConn.off("ReceivePrivateMessage", handlePrivateMessage);
+            pConn.off("ConversationUpdated", handleConversationUpdated);
         };
-    }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [currentUserId]);
 
 
     const handleSelectRoom = (roomName: string) => {
         setUnread(prev => {
             const next = new Map(prev);
-            next.delete(roomName);
+            next.set(roomName, 0); // instantly clear on click
             return next;
         });
         setSelectedRoom(roomName);
+        markRoomAsRead(roomName, currentUserId).catch(console.error);
+        markAllAsRead(currentUserId).catch(console.error);
     };
 
     const handleSelectDM = (userId: string) => {
         setDmUnread(prev => {
             const next = new Map(prev);
-            next.delete(userId);
+            next.set(userId, 0); // instantly clear on click
             return next;
         });
         navigate(`/dm/${userId}`);
+        markConversationAsRead(userId, currentUserId).catch(console.error);
+        markAllAsRead(currentUserId).catch(console.error);
     };
 
     const sortedUsers = [...users].sort((a, b) => {
@@ -246,7 +358,7 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
                     <span className="text-base font-black text-white select-none">Z</span>
                 </div>
                 <div className="flex-1 min-w-0">
-                    <div className="text-sm font-bold text-white leading-none">Zap<span style={{ color: "#38BDF8" }}>Com</span></div>
+                    <div className="text-sm font-bold text-white leading-none">Zap<span style={{ color: "#38BDF8" }}>Chat</span></div>
                     <div className="flex items-center gap-1.5 mt-1">
                         <span
                             className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -288,7 +400,6 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
                                 rooms.map(room => {
                                     const active = selectedRoom === room.name;
                                     const roomUnread = unread.get(room.name) ?? 0;
-                                    const lastMsg = roomLastMessage.get(room.name);
                                     
                                     return (
                                         <button
@@ -329,21 +440,16 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
                                                 <span className="truncate font-medium text-[13px] leading-tight">
                                                     {room.name}
                                                 </span>
-                                                {lastMsg && (
-                                                    <span className="text-[11px] text-slate-500 truncate block mt-0.5 leading-tight">
-                                                        {lastMsg.text}
+                                                {!active && roomUnread > 0 && (
+                                                    <span
+                                                        className="text-[11px] truncate block mt-0.5 leading-tight font-medium"
+                                                        style={{ color: "#06b6d4" }}
+                                                    >
+                                                        New message
                                                     </span>
                                                 )}
                                             </div>
-                                            
-                                            {!active && roomUnread > 0 && (
-                                                <span
-                                                    className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center shrink-0 leading-none"
-                                                    style={{ background: "#06b6d4" }}
-                                                >
-                                                    {roomUnread > 9 ? "9+" : roomUnread}
-                                                </span>
-                                            )}
+
                                             {active && (
                                                 <span
                                                     className="w-1.5 h-1.5 rounded-full shrink-0"
@@ -417,7 +523,6 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
                                     </div>
                                 )}
                                 {filteredUsers.map(user => {
-                                    const dmMsg = dmLastMessage.get(user.id);
                                     const uCount = dmUnread.get(user.id) ?? 0;
                                     const isDmActive = window.location.pathname.includes(`/dm/${user.id}`);
 
@@ -466,21 +571,15 @@ export default function Sidebar({ selectedRoom, setSelectedRoom }: Props) {
                                                 <span className="truncate font-medium text-[13px] leading-tight">
                                                     {user.anonymousName}
                                                 </span>
-                                                {dmMsg && (
-                                                    <span className="text-[11px] text-slate-500 truncate block mt-0.5 leading-tight">
-                                                        {dmMsg.text}
+                                                {!isDmActive && uCount > 0 && (
+                                                    <span
+                                                        className="text-[11px] truncate block mt-0.5 leading-tight font-medium"
+                                                        style={{ color: "#06b6d4" }}
+                                                    >
+                                                        New message
                                                     </span>
                                                 )}
                                             </div>
-
-                                            {!isDmActive && uCount > 0 && (
-                                                <span
-                                                    className="min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white flex items-center justify-center shrink-0 leading-none"
-                                                    style={{ background: "#06b6d4" }}
-                                                >
-                                                    {uCount > 9 ? "9+" : uCount}
-                                                </span>
-                                            )}
                                         </button>
                                     );
                                 })}

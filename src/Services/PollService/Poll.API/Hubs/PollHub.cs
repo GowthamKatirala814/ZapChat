@@ -9,10 +9,12 @@ namespace Poll.API.Hubs;
 public class PollHub : Hub
 {
     private readonly PollDbContext _context;
+    private readonly ILogger<PollHub> _logger;
 
-    public PollHub(PollDbContext context)
+    public PollHub(PollDbContext context, ILogger<PollHub> logger)
     {
         _context = context;
+        _logger = logger;
     }
 
     // Cast a vote and broadcast updated results to all clients
@@ -84,8 +86,7 @@ public class PollHub : Hub
 
     public override async Task OnConnectedAsync()
     {
-        Console.WriteLine(
-            $"[PollHub] User connected: {Context.UserIdentifier}");
+        _logger.LogInformation("[PollHub] User connected: {UserId}", Context.UserIdentifier);
         await base.OnConnectedAsync();
     }
 }

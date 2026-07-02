@@ -15,7 +15,7 @@ export interface Conversation {
         isRead: boolean;
     } | null;
     unreadCount: number;
-    lastActivity: string | null;
+    lastMessageAt: string | null;
 }
 
 export const createConversation =
@@ -61,9 +61,26 @@ export const markAsRead =
         );
     };
 
-export const deletePrivateMessage =
-    async (messageId: string): Promise<void> => {
-        await privateChatApiClient.delete(
-            `/api/privatemessages/${messageId}`
+export const deletePrivateMessage = async (messageId: string): Promise<void> => {
+    await privateChatApiClient.delete(`/api/privatechat/message/${encodeURIComponent(messageId)}`);
+};
+
+export const blockUser = async (blockerId: string, blockedId: string): Promise<void> => {
+    await privateChatApiClient.post(`/api/privatechat/blocks?blockerId=${blockerId}&blockedId=${blockedId}`);
+};
+
+export const unblockUser = async (blockerId: string, blockedId: string): Promise<void> => {
+    await privateChatApiClient.delete(`/api/privatechat/blocks?blockerId=${blockerId}&blockedId=${blockedId}`);
+};
+
+export const getBlockedUsers = async (userId: string): Promise<string[]> => {
+    const response = await privateChatApiClient.get(`/api/privatechat/blocks?userId=${userId}`);
+    return response.data;
+};
+
+export const markConversationAsRead =
+    async (otherUserId: string, userId: string): Promise<void> => {
+        await privateChatApiClient.put(
+            `/api/privatechat/conversation/${otherUserId}/read?userId=${userId}`
         );
     };

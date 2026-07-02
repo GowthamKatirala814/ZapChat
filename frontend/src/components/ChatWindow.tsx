@@ -16,7 +16,7 @@ export default function ChatWindow({ roomName }: Props) {
     const [typingUser, setTypingUser] = useState("");
     const [statusMsg, setStatusMsg] = useState("");
     const [replyingTo, setReplyingTo] = useState<Message | null>(null);
-
+    const [blockedMessage, setBlockedMessage] = useState("");
     const bottomRef = useRef<HTMLDivElement>(null);
     const typingTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
     const inputRef = useRef<HTMLInputElement>(null);
@@ -77,10 +77,35 @@ export default function ChatWindow({ roomName }: Props) {
             }));
         };
 
-        const handleMessageDeleted = (data: { messageId: string; deletedAt: string }) => {
+        const handleMessageDeleted = (data: { messageId: string; deletedAt: string; deletedBy: string }) => {
             setMessages(prev => prev.map(m =>
-                m.id === data.messageId ? { ...m, isDeleted: true, deletedAt: data.deletedAt } : m
+                m.id === data.messageId
+                    ? {
+                        ...m,
+                        isDeleted: data.deletedBy === "User",
+                        deletedBy: data.deletedBy,
+                        deletedAt: data.deletedAt,
+                        message: ""
+                      }
+                    : m
             ));
+        };
+
+        const handleMessageBlocked = (data: { category: string; reason: string }) => {
+            setBlockedMessage(data.reason);
+            setTimeout(() => setBlockedMessage(""), 5000);
+        };
+
+        const handleMessageEdited = (data: { messageId: string; content: string; editedAt: string; isEdited: boolean }) => {
+            setMessages(prev => prev.map(m =>
+                m.id === data.messageId
+                    ? { ...m, message: data.content, isEdited: data.isEdited, editedAt: data.editedAt }
+                    : m
+            ));
+        };
+
+        const handleRoomMessageRead = (data: { messageId: string, readBy: string, readAt: string }) => {
+            setMessages(prev => prev.map(m => m.id === data.messageId ? { ...m, isRead: true } : m));
         };
 
         connection.on("ReceiveMessage", handleReceiveMessage);
@@ -90,14 +115,12 @@ export default function ChatWindow({ roomName }: Props) {
         connection.on("UserStoppedTyping", handleUserStoppedTyping);
         connection.on("ReactionAdded", handleReactionAdded);
         connection.on("MessageDeleted", handleMessageDeleted);
+        connection.on("MessageBlocked", handleMessageBlocked);
+        connection.on("MessageEdited", handleMessageEdited);
+        connection.on("RoomMessageRead", handleRoomMessageRead);
 
         const boot = async () => {
             try {
-                const token = localStorage.getItem("token");
-                if (!token) {
-                    console.error("[ChatHub] No token — aborting connection");
-                    return;
-                }
                 if (connection.state === "Disconnected") {
                     await connection.start();
                 }
@@ -119,6 +142,9 @@ export default function ChatWindow({ roomName }: Props) {
             connection.off("UserStoppedTyping", handleUserStoppedTyping);
             connection.off("ReactionAdded", handleReactionAdded);
             connection.off("MessageDeleted", handleMessageDeleted);
+            connection.off("MessageBlocked", handleMessageBlocked);
+            connection.off("MessageEdited", handleMessageEdited);
+            connection.off("RoomMessageRead", handleRoomMessageRead);
         };
     }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -193,13 +219,48 @@ export default function ChatWindow({ roomName }: Props) {
         }
     }, []);
 
+    const handleEdit = useCallback(async (messageId: string, newContent: string) => {
+        if (connection.state !== "Connected") return;
+        try {
+            await connection.invoke("EditMessage", messageId, newContent);
+        } catch (err) {
+            console.error("[ChatHub] EditMessage error:", err);
+        }
+    }, []);
+
     return (
         <div className="h-full flex flex-col overflow-hidden" style={{ background: "#F8FAFC" }}>
 
             {/* System status toast */}
             {statusMsg && (
-                <div className="px-6 py-1.5 text-xs text-slate-500 bg-white border-b border-slate-100 text-center">
+                <div className="px-6 py-1.5 text-xs text-slate-500 bg-white border-b border-slate-100 text-center shrink-0">
                     {statusMsg}
+                </div>
+            )}
+
+
+            {/* Content moderation blocked-message toast */}
+            {blockedMessage && (
+                <div
+                    role="alert"
+                    style={{
+                        margin: "8px 16px 0",
+                        padding: "10px 14px",
+                        borderRadius: "10px",
+                        background: "#FFF7ED",
+                        border: "1px solid #FED7AA",
+                        borderLeft: "4px solid #F97316",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "8px",
+                        fontSize: "13px",
+                        color: "#9A3412",
+                        lineHeight: "1.4",
+                        animation: "fadeIn 0.2s ease"
+                    }}
+                >
+                    <span style={{ fontSize: "15px", flexShrink: 0, marginTop: "1px" }}>🚫</span>
+                    <span>{blockedMessage}</span>
                 </div>
             )}
 
@@ -234,6 +295,7 @@ export default function ChatWindow({ roomName }: Props) {
                                 console.error("[ChatWindow] DeleteMessage error:", err);
                             }
                         } : undefined}
+                        onEdit={(newContent) => handleEdit(m.id!, newContent)}
                     />
                 ))}
 

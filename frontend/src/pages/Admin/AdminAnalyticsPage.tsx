@@ -314,11 +314,11 @@ export default function AdminAnalyticsPage() {
     }));
 
     return (
-        <div className="p-6 space-y-5">
+        <div className="p-3 sm:p-6 space-y-4 sm:space-y-5">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Analytics</h1>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white">Analytics</h1>
                     <p className="text-sm text-slate-400 mt-0.5">
                         Organizational insights — what employees are discussing and feeling
                     </p>
@@ -420,8 +420,8 @@ export default function AdminAnalyticsPage() {
                             />
                             <Tooltip
                                 {...TOOLTIP_STYLE}
-                                formatter={(value: number, _name: string, props: { payload?: { health?: string } }) => [
-                                    `${value.toFixed(1)}% (${props?.payload?.health ?? ""})`,
+                                formatter={(value: any, _name: any, props: any) => [
+                                    `${Number(value).toFixed(1)}% (${props?.payload?.health ?? ""})`,
                                     "Report Rate",
                                 ]}
                             />
@@ -432,7 +432,7 @@ export default function AdminAnalyticsPage() {
                                 <LabelList
                                     dataKey="rate"
                                     position="right"
-                                    formatter={(v: number) => `${v.toFixed(1)}%`}
+                                    formatter={(v: any) => `${Number(v).toFixed(1)}%`}
                                     style={{ fill: "#64748b", fontSize: 10 }}
                                 />
                             </Bar>
@@ -471,7 +471,7 @@ export default function AdminAnalyticsPage() {
                             <YAxis tick={TICK_STYLE} tickLine={false} axisLine={false} />
                             <Tooltip
                                 {...TOOLTIP_STYLE}
-                                formatter={(value: number) => [value, "Votes"]}
+                                formatter={(value: any) => [value, "Votes"]}
                             />
                             <Bar dataKey="votes" name="Votes" radius={[4, 4, 0, 0]} fill={PURPLE}>
                                 <LabelList content={<PollVoteLabel />} />
@@ -525,8 +525,8 @@ export default function AdminAnalyticsPage() {
                             <YAxis tick={TICK_STYLE} tickLine={false} axisLine={false} />
                             <Tooltip
                                 {...TOOLTIP_STYLE}
-                                formatter={(value: number) => [value, "Messages"]}
-                                labelFormatter={(label) => `Hour: ${label}`}
+                                formatter={(value: any) => [value, "Messages"]}
+                                labelFormatter={(label: any) => `Hour: ${label}`}
                             />
                             <Bar dataKey="messageCount" name="Messages" radius={[2, 2, 0, 0]}>
                                 {hourlyChartData.map((h, i) => (
@@ -589,7 +589,7 @@ export default function AdminAnalyticsPage() {
                             <LabelList
                                 dataKey="positive"
                                 position="inside"
-                                formatter={(v: number) => (v >= 8 ? `${v}%` : "")}
+                                formatter={(v: any) => (Number(v) >= 8 ? `${v}%` : "")}
                                 style={{ fill: "#fff", fontSize: 10, fontWeight: 600 }}
                             />
                         </Bar>
@@ -597,7 +597,7 @@ export default function AdminAnalyticsPage() {
                             <LabelList
                                 dataKey="neutral"
                                 position="inside"
-                                formatter={(v: number) => (v >= 8 ? `${v}%` : "")}
+                                formatter={(v: any) => (Number(v) >= 8 ? `${v}%` : "")}
                                 style={{ fill: "#fff", fontSize: 10, fontWeight: 600 }}
                             />
                         </Bar>
@@ -605,7 +605,7 @@ export default function AdminAnalyticsPage() {
                             <LabelList
                                 dataKey="negative"
                                 position="inside"
-                                formatter={(v: number) => (v >= 8 ? `${v}%` : "")}
+                                formatter={(v: any) => (Number(v) >= 8 ? `${v}%` : "")}
                                 style={{ fill: "#fff", fontSize: 10, fontWeight: 600 }}
                             />
                         </Bar>

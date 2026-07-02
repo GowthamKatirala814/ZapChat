@@ -230,8 +230,8 @@ public class RegistrationService : IRegistrationService
         // Inform AdminService to sync this new user into default rooms
         try
         {
-            var client = _httpClientFactory.CreateClient();
-            var response = await client.PostAsync($"http://localhost:5002/api/admin/rooms/sync-user/{user.Id}", null);
+            var client = _httpClientFactory.CreateClient("AdminService");
+            var response = await client.PostAsync($"api/admin/rooms/sync-user/{user.Id}", null);
             if (!response.IsSuccessStatusCode)
             {
                 _logger.LogWarning("Failed to sync new user {UserId} to Admin rooms. Status: {Status}", user.Id, response.StatusCode);

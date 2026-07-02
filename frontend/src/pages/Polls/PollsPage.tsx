@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import { BarChart3, Plus, X } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import TopNav from "../../components/TopNav";
+import { useTheme } from "../../context/ThemeContext";
 import type { RootState, AppDispatch } from "../../store/store";
 import {
     setPolls,
@@ -17,6 +18,7 @@ import type { Poll } from "../../types/Poll";
 import PollCard from "../../components/PollCard";
 
 export default function PollsPage() {
+    const { isDark } = useTheme();
     const dispatch = useDispatch<AppDispatch>();
     useNavigate(); // retained for future navigation
     const { polls, loading } = useSelector(
@@ -108,28 +110,33 @@ export default function PollsPage() {
         dispatch(setUserReaction({ pollId, isUpvote }));
     };
 
+    const pageBg = isDark ? "#0c1220" : "#f0f9ff";
+    const headerBg = isDark ? "#0f172a" : "#ffffff";
+    const headerBorder = isDark ? "rgba(255,255,255,0.07)" : "#e2e8f0";
+    const headerText = isDark ? "#f1f5f9" : "#0f172a";
+
     return (
-        <div className="min-h-screen flex flex-col" style={{ background: "#F8FAFC" }}>
+        <div className="min-h-screen flex flex-col" style={{ background: pageBg }}>
             <TopNav />
 
             {/* Page header */}
             <div
-                className="px-6 py-4 flex items-center justify-between bg-white"
-                style={{ borderBottom: "1px solid #E2E8F0" }}
+                className="px-4 sm:px-6 py-3 sm:py-4 flex items-center justify-between"
+                style={{ background: headerBg, borderBottom: `1px solid ${headerBorder}` }}
             >
                 <div className="flex items-center gap-2">
                     <BarChart3 size={20} style={{ color: "#0EA5E9" }} />
-                    <h1 className="text-xl font-bold text-slate-900">Polls</h1>
+                    <h1 className="text-lg sm:text-xl font-bold" style={{ color: headerText }}>Polls</h1>
                 </div>
                 <button
                     onClick={() => setShowCreate(true)}
-                    className="flex items-center gap-2 text-sm text-white px-4 py-2 rounded-lg transition-colors"
+                    className="flex items-center gap-1.5 sm:gap-2 text-xs sm:text-sm text-white px-3 sm:px-4 py-2 rounded-lg transition-colors"
                     style={{ background: "#0EA5E9" }}
                     onMouseEnter={e => (e.currentTarget.style.background = "#0284C7")}
                     onMouseLeave={e => (e.currentTarget.style.background = "#0EA5E9")}
                 >
-                    <Plus size={16} />
-                    New Poll
+                    <Plus size={14} />
+                    <span className="hidden sm:inline">New </span>Poll
                 </button>
             </div>
 

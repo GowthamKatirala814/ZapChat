@@ -4,6 +4,7 @@ import { connection } from "../hubs/chatHub";
 import { getNormalUsers } from "../api/authApi";
 import type { User } from "../types/User";
 import { MessageSquare, Users, Wifi } from "lucide-react";
+import { useTheme } from "../context/ThemeContext";
 
 interface Props {
     roomName?: string;
@@ -28,6 +29,7 @@ export default function OnlineUsers({ roomName }: Props) {
     const [onlineNames, setOnlineNames] = useState<Set<string>>(new Set());
     const navigate                    = useNavigate();
     const currentUserId               = localStorage.getItem("userId");
+    const { isDark }                  = useTheme();
 
     // Load all active non-admin platform users (admin and deleted accounts excluded at source)
     useEffect(() => {
@@ -63,63 +65,48 @@ export default function OnlineUsers({ roomName }: Props) {
     const online  = others.filter(u => onlineNames.has(u.anonymousName));
     const offline = others.filter(u => !onlineNames.has(u.anonymousName));
 
+    const panelBg  = isDark ? "#0f172a" : "#ffffff";
+    const border   = isDark ? "rgba(255,255,255,0.07)" : "#E2E8F0";
+    const hdrText  = isDark ? "#94a3b8" : "#64748b";
+    const roomBg   = isDark ? "rgba(14,165,233,0.1)" : "#EFF6FF";
+    const roomBord = isDark ? "rgba(14,165,233,0.2)" : "#BAE6FD";
+    const statBg   = isDark ? "rgba(255,255,255,0.04)" : "#F8FAFC";
+    const statBord = isDark ? "rgba(255,255,255,0.06)" : "#E2E8F0";
+    const statText = isDark ? "#f1f5f9" : "#0f172a";
+    const onlineBg = isDark ? "rgba(34,197,94,0.08)" : "#F0FDF4";
+    const onlineBrd= isDark ? "rgba(34,197,94,0.2)" : "#BBF7D0";
+
     return (
         <div
-            className="h-full flex flex-col bg-white"
-            style={{ borderLeft: "1px solid #E2E8F0" }}
+            className="h-full flex flex-col"
+            style={{ background: panelBg, borderLeft: `1px solid ${border}` }}
         >
             {/* ── Room Info header ──────────────────────────────────── */}
-            <div
-                className="px-4 py-4 shrink-0"
-                style={{ borderBottom: "1px solid #E2E8F0" }}
-            >
+            <div className="px-4 py-4 shrink-0" style={{ borderBottom: `1px solid ${border}` }}>
                 <div className="flex items-center justify-between mb-3">
-                    <h2 className="text-xs font-bold uppercase tracking-widest text-slate-500">
-                        Room Info
-                    </h2>
+                    <h2 className="text-xs font-bold uppercase tracking-widest" style={{ color: hdrText }}>Room Info</h2>
                     <Wifi size={12} style={{ color: "#22C55E" }} />
                 </div>
 
                 {/* Room name badge */}
-                <div
-                    className="flex items-center gap-2 px-3 py-2.5 rounded-xl"
-                    style={{ background: "#EFF6FF", border: "1px solid #BAE6FD" }}
-                >
-                    <div
-                        className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0"
-                        style={{ background: "#DBEAFE" }}
-                    >
+                <div className="flex items-center gap-2 px-3 py-2.5 rounded-xl" style={{ background: roomBg, border: `1px solid ${roomBord}` }}>
+                    <div className="w-6 h-6 rounded-lg flex items-center justify-center shrink-0" style={{ background: isDark ? "rgba(14,165,233,0.15)" : "#DBEAFE" }}>
                         <span className="text-xs font-bold" style={{ color: "#0EA5E9" }}>#</span>
                     </div>
                     <div className="min-w-0">
-                        <div className="text-xs font-semibold text-slate-800 truncate">
-                            {roomName ?? "General Chat"}
-                        </div>
-                        <div className="text-[10px] mt-0.5 text-slate-500">
-                            Group channel
-                        </div>
+                        <div className="text-xs font-semibold truncate" style={{ color: statText }}>{roomName ?? "General Chat"}</div>
+                        <div className="text-[10px] mt-0.5" style={{ color: hdrText }}>Group channel</div>
                     </div>
                 </div>
 
-                {/* Quick stats */}
                 <div className="grid grid-cols-2 gap-2 mt-3">
-                    <div
-                        className="flex flex-col items-center py-2.5 rounded-xl"
-                        style={{ background: "#F8FAFC", border: "1px solid #E2E8F0" }}
-                    >
-                        <div className="text-base font-bold text-slate-800">
-                            {others.length}
-                        </div>
-                        <div className="text-[10px] mt-0.5 text-slate-500">Members</div>
+                    <div className="flex flex-col items-center py-2.5 rounded-xl" style={{ background: statBg, border: `1px solid ${statBord}` }}>
+                        <div className="text-base font-bold" style={{ color: statText }}>{others.length}</div>
+                        <div className="text-[10px] mt-0.5" style={{ color: hdrText }}>Members</div>
                     </div>
-                    <div
-                        className="flex flex-col items-center py-2.5 rounded-xl"
-                        style={{ background: "#F0FDF4", border: "1px solid #BBF7D0" }}
-                    >
-                        <div className="text-base font-bold" style={{ color: "#16A34A" }}>
-                            {online.length}
-                        </div>
-                        <div className="text-[10px] mt-0.5 text-slate-500">Online</div>
+                    <div className="flex flex-col items-center py-2.5 rounded-xl" style={{ background: onlineBg, border: `1px solid ${onlineBrd}` }}>
+                        <div className="text-base font-bold" style={{ color: "#16A34A" }}>{online.length}</div>
+                        <div className="text-[10px] mt-0.5" style={{ color: hdrText }}>Online</div>
                     </div>
                 </div>
             </div>
@@ -151,6 +138,7 @@ export default function OnlineUsers({ roomName }: Props) {
                                         isOnline={true}
                                         fromColor={from}
                                         toColor={to}
+                                        isDark={isDark}
                                         onDM={() => navigate(`/dm/${user.id}`)}
                                     />
                                 );
@@ -180,6 +168,7 @@ export default function OnlineUsers({ roomName }: Props) {
                                         isOnline={false}
                                         fromColor={from}
                                         toColor={to}
+                                        isDark={isDark}
                                         onDM={() => navigate(`/dm/${user.id}`)}
                                     />
                                 );
@@ -216,9 +205,10 @@ interface MemberRowProps {
     fromColor: string;
     toColor: string;
     onDM: () => void;
+    isDark: boolean;
 }
 
-function MemberRow({ user, isOnline, fromColor, toColor, onDM }: MemberRowProps) {
+function MemberRow({ user, isOnline, fromColor, toColor, onDM, isDark }: MemberRowProps) {
     const [hovered, setHovered] = useState(false);
 
     return (
@@ -228,7 +218,7 @@ function MemberRow({ user, isOnline, fromColor, toColor, onDM }: MemberRowProps)
             onMouseLeave={() => setHovered(false)}
             className="flex items-center gap-2.5 px-2.5 py-2 rounded-xl cursor-pointer transition-all duration-150 group"
             style={{
-                background: hovered ? "#F1F5F9" : "transparent",
+                background: hovered ? (isDark ? "rgba(255,255,255,0.05)" : "#F1F5F9") : "transparent",
             }}
         >
             {/* Avatar */}
@@ -256,7 +246,7 @@ function MemberRow({ user, isOnline, fromColor, toColor, onDM }: MemberRowProps)
             <div className="flex-1 min-w-0">
                 <div
                     className="text-xs font-semibold truncate transition-colors"
-                    style={{ color: isOnline ? "#0F172A" : "#94A3B8" }}
+                    style={{ color: isOnline ? (isDark ? "#f1f5f9" : "#0F172A") : "#94A3B8" }}
                 >
                     {user.anonymousName}
                 </div>

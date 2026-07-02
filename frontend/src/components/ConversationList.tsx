@@ -1,8 +1,9 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Search, MessageSquare, Plus, X, Loader2 } from "lucide-react";
 import { getConversations, markAsRead, createConversation } from "../api/privateChatApi";
 import type { Conversation } from "../api/privateChatApi";
 import type { User } from "../types/User";
+import { getPrivateChatConnection } from "../hubs/privateChatHub";
 
 interface ConversationListProps {
     currentUserId: string;
@@ -17,6 +18,7 @@ export default function ConversationList({ currentUserId, onSelectConversation, 
     const [searchResults, setSearchResults] = useState<User[]>([]);
     const [searching, setSearching] = useState(false);
     const [showSearch, setShowSearch] = useState(false);
+    const signalRRegistered = useRef(false);
 
     const loadConversations = async () => {
         setLoading(true);
@@ -32,6 +34,70 @@ export default function ConversationList({ currentUserId, onSelectConversation, 
 
     useEffect(() => { loadConversations(); }, [currentUserId]);
 
+    // ── SignalR: reorder conversation list in-place when a message is sent/received ──
+    useEffect(() => {
+        if (!currentUserId || signalRRegistered.current) return;
+
+        const conn = getPrivateChatConnection();
+
+        const handleConversationUpdated = (data: {
+            conversationId: string;
+            lastMessageAt: string;
+            lastMessageContent: string;
+            lastMessageSenderName: string;
+            unreadCount: number;
+        }) => {
+            setConversations(prev => {
+                const idx = prev.findIndex(c => c.id === data.conversationId);
+                
+                if (idx === -1) {
+                    // Unknown conversation! It's a brand new chat.
+                    // Instead of complex async state logic, just queue a full reload.
+                    setTimeout(() => loadConversations(), 100);
+                    return prev;
+                }
+
+                // Pull the matched conversation, update its timestamp and preview
+                const updated = {
+                    ...prev[idx],
+                    lastMessageAt: data.lastMessageAt,
+                    lastMessage: prev[idx].lastMessage
+                        ? {
+                              ...prev[idx].lastMessage!,
+                              content: data.lastMessageContent,
+                              sentAt: data.lastMessageAt,
+                              senderName: data.lastMessageSenderName
+                          }
+                        : {
+                              id: "",
+                              content: data.lastMessageContent,
+                              sentAt: data.lastMessageAt,
+                              senderId: "",
+                              senderName: data.lastMessageSenderName,
+                              isRead: false
+                          },
+                    // Use the exact unread count from the DB (if -1, it means we are the sender so don't update it)
+                    unreadCount: data.unreadCount === -1 
+                        ? prev[idx].unreadCount 
+                        : (activeConversationId === data.conversationId ? 0 : data.unreadCount)
+                };
+
+                // Remove from current position and prepend to top
+                const rest = prev.filter(c => c.id !== data.conversationId);
+                return [updated, ...rest];
+            });
+        };
+
+        conn.off("ConversationUpdated", handleConversationUpdated);
+        conn.on("ConversationUpdated", handleConversationUpdated);
+        signalRRegistered.current = true;
+
+        return () => {
+            conn.off("ConversationUpdated", handleConversationUpdated);
+            signalRRegistered.current = false;
+        };
+    }, [currentUserId, activeConversationId]);
+
     const handleSearch = async (q: string) => {
         setSearchQuery(q);
         if (!q.trim()) {
@@ -40,8 +106,7 @@ export default function ConversationList({ currentUserId, onSelectConversation, 
         }
         setSearching(true);
         try {
-            // For now, use getUsers and filter
-            const allUsers = await fetch("http://localhost:5111/api/auth/users").then(r => r.json());
+            const allUsers = await fetch("https://localhost:5000/api/auth/users").then(r => r.json());
             const filtered = allUsers.filter((u: User) =>
                 u.anonymousName.toLowerCase().includes(q.toLowerCase()) &&
                 u.id !== currentUserId
@@ -201,9 +266,9 @@ export default function ConversationList({ currentUserId, onSelectConversation, 
                                         <span className="font-medium text-white text-sm truncate">
                                             User {conv.otherUserId.slice(0, 8)}
                                         </span>
-                                        {conv.lastActivity && (
+                                        {conv.lastMessageAt && (
                                             <span className="text-xs text-slate-500">
-                                                {formatTime(conv.lastActivity)}
+                                                {formatTime(conv.lastMessageAt)}
                                             </span>
                                         )}
                                     </div>

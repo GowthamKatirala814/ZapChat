@@ -14,11 +14,16 @@ public class RoomManagementController : ControllerBase
 {
     private readonly IRoomManagementService _roomService;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly ILogger<RoomManagementController> _logger;
 
-    public RoomManagementController(IRoomManagementService roomService, IHttpClientFactory httpClientFactory)
+    public RoomManagementController(
+        IRoomManagementService roomService,
+        IHttpClientFactory httpClientFactory,
+        ILogger<RoomManagementController> logger)
     {
         _roomService = roomService;
         _httpClientFactory = httpClientFactory;
+        _logger = logger;
     }
 
     /// <summary>
@@ -69,6 +74,17 @@ public class RoomManagementController : ControllerBase
         {
             return NotFound();
         }
+    }
+
+    /// <summary>
+    /// Returns the active user IDs for a given room.
+    /// </summary>
+    [HttpGet("{id:guid}/members")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    public async Task<IActionResult> GetRoomMembers(Guid id)
+    {
+        var members = await _roomService.GetMembersAsync(id);
+        return Ok(members);
     }
 
     /// <summary>
@@ -166,18 +182,20 @@ public class RoomManagementController : ControllerBase
 
     /// <summary>
     /// Sends room creation notifications to all active users.
+    /// Uses named HttpClients configured via ServiceUrls in appsettings.
     /// </summary>
     private async Task SendRoomCreationNotificationsAsync(RoomDto room)
     {
         try
         {
-            // Get all active users from Auth Service
-            var httpClient = _httpClientFactory.CreateClient();
-            var authResponse = await httpClient.GetFromJsonAsync<List<AuthUserRecord>>("http://localhost:5001/api/auth/users");
-            
+            // Get all active users from Auth Service (uses named client configured in Program.cs)
+            var authClient = _httpClientFactory.CreateClient("AuthService");
+            var authResponse = await authClient.GetFromJsonAsync<List<AuthUserRecord>>("api/auth/users");
+
             if (authResponse != null)
             {
                 var activeUsers = authResponse.Where(u => u.IsActive && !u.IsDeleted).ToList();
+                // Uses named Notification client configured in Program.cs
                 var notificationClient = _httpClientFactory.CreateClient();
 
                 foreach (var user in activeUsers)
@@ -189,15 +207,18 @@ public class RoomManagementController : ControllerBase
                         Message = $"A new room '{room.Name}' has been created. {room.Description}"
                     };
 
-                    await notificationClient.PostAsJsonAsync("http://localhost:5005/api/notification", notificationRequest);
+                    // NotificationService URL comes from ServiceUrls:NotificationService config
+                    var opts = HttpContext.RequestServices
+                        .GetRequiredService<Microsoft.Extensions.Options.IOptions<Admin.Infrastructure.Configuration.ServiceUrlsOptions>>().Value;
+                    var notifUrl = (opts.NotificationService?.TrimEnd('/') ?? string.Empty) + "/api/notification";
+                    await notificationClient.PostAsJsonAsync(notifUrl, notificationRequest);
                 }
             }
         }
         catch (Exception ex)
         {
             // Log the error but don't fail the room creation
-            // In production, you'd use proper logging
-            Console.WriteLine($"Failed to send room creation notifications: {ex.Message}");
+            _logger.LogError(ex, "Failed to send room creation notifications for room {RoomId}", room?.Id);
         }
     }
 }

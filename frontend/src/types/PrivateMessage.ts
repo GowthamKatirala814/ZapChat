@@ -18,4 +18,9 @@ export interface PrivateMessage {
     // User self-deletion (separate from admin moderation IsRemoved)
     isDeleted?: boolean;
     deletedAt?: string;
+    deletedBy?: string;
+    isEdited?: boolean;
+    editedAt?: string;
+    parentMessageSnippet?: string;
+    parentMessageSenderName?: string;
 }

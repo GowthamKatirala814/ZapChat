@@ -339,7 +339,7 @@ function Analytics() {
 
 function SettingsSection() {
     const fields = [
-        { label: "System Name",      value: "ZapPulse" },
+        { label: "System Name",      value: "ZapChat" },
         { label: "Max Room Members", value: "—" },
         { label: "JWT Expiry",       value: "—" },
         { label: "Anonymous Mode",   value: "Enabled" },
@@ -423,7 +423,7 @@ export default function AdminDashboard() {
                         <Shield size={16} className="text-white" />
                     </div>
                     <div>
-                        <div className="text-xs font-bold text-white">ZapPulse</div>
+                        <div className="text-xs font-bold text-white">ZapChat</div>
                         <div className="text-[10px] mt-0.5 font-semibold uppercase tracking-wider"
                             style={{ color: "#a78bfa" }}>
                             Admin Console

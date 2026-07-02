@@ -1,6 +1,6 @@
 import { useEffect, useState, useCallback } from "react";
-import { Search, Trash2, AlertCircle, RefreshCw, X, Loader2 } from "lucide-react";
-import { getAdminUsers, searchAdminUsers, deleteUser } from "../../api/adminApi";
+import { Search, Trash2, AlertCircle, RefreshCw, X, Loader2, ChevronLeft, ChevronRight, ChevronDown, ChevronUp } from "lucide-react";
+import { getAdminUsersPaginated, deleteUser } from "../../api/adminApi";
 import type { AdminUser } from "../../api/adminApi";
 
 type ModalState =
@@ -85,36 +85,59 @@ export default function AdminUsersPage() {
     const [users, setUsers] = useState<AdminUser[]>([]);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
-    const [query, setQuery] = useState("");
     const [modal, setModal] = useState<ModalState>(null);
     const [toast, setToast] = useState<string | null>(null);
+
+    // Pagination & Filter State
+    const [page, setPage] = useState(1);
+    const [pageSize, setPageSize] = useState(10);
+    const [totalCount, setTotalCount] = useState(0);
+    const [search, setSearch] = useState("");
+    const [statusFilter, setStatusFilter] = useState("All");
+    const [deptFilter, setDeptFilter] = useState("");
+    
+    // Sorting State
+    const [sortBy, setSortBy] = useState("JoinedDate");
+    const [sortDesc, setSortDesc] = useState(true);
 
     const showToast = (msg: string) => {
         setToast(msg);
         setTimeout(() => setToast(null), 3000);
     };
 
-    const load = useCallback(async (q = "") => {
+    const load = useCallback(async () => {
         setLoading(true);
         setError(null);
         try {
-            const data = q.trim()
-                ? await searchAdminUsers(q.trim())
-                : await getAdminUsers();
-            setUsers(data);
+            const data = await getAdminUsersPaginated({
+                page,
+                pageSize,
+                search: search.trim() || undefined,
+                status: statusFilter !== "All" ? statusFilter : undefined,
+                department: deptFilter || undefined,
+                sortBy,
+                sortDesc
+            });
+            setUsers(data.items);
+            setTotalCount(data.totalCount);
         } catch {
             setError("Failed to load users.");
         } finally {
             setLoading(false);
         }
-    }, []);
-
-    useEffect(() => { load(); }, [load]);
+    }, [page, pageSize, search, statusFilter, deptFilter, sortBy, sortDesc]);
 
     useEffect(() => {
-        const t = setTimeout(() => load(query), 350);
+        const t = setTimeout(() => {
+            load();
+        }, 300);
         return () => clearTimeout(t);
-    }, [query, load]);
+    }, [load]);
+
+    // Reset to page 1 if filters change
+    useEffect(() => {
+        setPage(1);
+    }, [search, statusFilter, deptFilter, sortBy, sortDesc, pageSize]);
 
     const handleConfirm = async (reason: string) => {
         if (!modal) return;
@@ -122,27 +145,31 @@ export default function AdminUsersPage() {
             await deleteUser(modal.user.id, reason);
             showToast("User deleted successfully.");
             setModal(null);
-            load(query);
+            load();
         } catch {
             showToast("Action failed. Please try again.");
             setModal(null);
         }
     };
 
-    const sortedUsers = [...users].sort((a, b) => {
-        if (a.isDeleted === b.isDeleted) {
-            const dateA = a.createdAt ? new Date(a.createdAt).getTime() : 0;
-            const dateB = b.createdAt ? new Date(b.createdAt).getTime() : 0;
-            return dateB - dateA;
+    const handleSort = (column: string) => {
+        if (sortBy === column) {
+            setSortDesc(!sortDesc);
+        } else {
+            setSortBy(column);
+            setSortDesc(false);
         }
-        return a.isDeleted ? 1 : -1;
-    });
+    };
 
-    const activeUsers = sortedUsers.filter(u => !u.isDeleted);
-    const deletedUsers = sortedUsers.filter(u => u.isDeleted);
+    const SortIcon = ({ column }: { column: string }) => {
+        if (sortBy !== column) return null;
+        return sortDesc ? <ChevronDown size={14} className="ml-1 inline" /> : <ChevronUp size={14} className="ml-1 inline" />;
+    };
+
+    const totalPages = Math.ceil(totalCount / pageSize);
 
     return (
-        <div className="p-6 space-y-5">
+        <div className="p-3 sm:p-6 space-y-4 sm:space-y-5">
             {/* Toast */}
             {toast && (
                 <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white shadow-2xl"
@@ -152,30 +179,56 @@ export default function AdminUsersPage() {
             )}
 
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">User Management</h1>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white">User Management</h1>
                     <p className="text-sm text-slate-400 mt-0.5">
-                        {users.length} total · {activeUsers.length} active · {deletedUsers.length} deleted
+                        {totalCount} total records found
                     </p>
                 </div>
-                <button onClick={() => load(query)} disabled={loading}
+                <button onClick={() => load()} disabled={loading}
                     className="flex items-center gap-2 px-4 py-2 rounded-xl text-sm text-slate-300 hover:text-white border border-slate-700 hover:border-slate-500 transition-all disabled:opacity-50">
                     <RefreshCw size={14} className={loading ? "animate-spin" : ""} />
                     Refresh
                 </button>
             </div>
 
-            {/* Search */}
-            <div className="relative">
-                <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
-                <input
-                    value={query}
-                    onChange={e => setQuery(e.target.value)}
-                    placeholder="Search by anonymous name, department, or branch…"
-                    className="w-full pl-10 pr-4 py-3 rounded-xl text-sm outline-none"
+            {/* Filters */}
+            <div className="flex flex-wrap gap-4 items-center">
+                <div className="relative flex-1 min-w-[250px]">
+                    <Search size={15} className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-500" />
+                    <input
+                        value={search}
+                        onChange={e => setSearch(e.target.value)}
+                        placeholder="Search by name, email..."
+                        className="w-full pl-10 pr-4 py-2.5 rounded-xl text-sm outline-none transition-colors"
+                        style={{ background: "rgba(15,23,42,0.8)", border: "1px solid rgba(255,255,255,0.08)", color: "#f1f5f9" }}
+                    />
+                </div>
+                <select
+                    value={statusFilter}
+                    onChange={e => setStatusFilter(e.target.value)}
+                    className="px-4 py-2.5 rounded-xl text-sm outline-none appearance-none pr-8 cursor-pointer"
                     style={{ background: "rgba(15,23,42,0.8)", border: "1px solid rgba(255,255,255,0.08)", color: "#f1f5f9" }}
-                />
+                >
+                    <option value="All">All Status</option>
+                    <option value="Active">Active Users</option>
+                    <option value="Deleted">Deleted Users</option>
+                </select>
+                <select
+                    value={deptFilter}
+                    onChange={e => setDeptFilter(e.target.value)}
+                    className="px-4 py-2.5 rounded-xl text-sm outline-none appearance-none pr-8 cursor-pointer"
+                    style={{ background: "rgba(15,23,42,0.8)", border: "1px solid rgba(255,255,255,0.08)", color: "#f1f5f9" }}
+                >
+                    <option value="">All Departments</option>
+                    <option value="Engineering">Engineering</option>
+                    <option value="HR">HR</option>
+                    <option value="Sales">Sales</option>
+                    <option value="Marketing">Marketing</option>
+                    <option value="Operations">Operations</option>
+                    <option value="Finance">Finance</option>
+                </select>
             </div>
 
             {/* Error */}
@@ -187,71 +240,127 @@ export default function AdminUsersPage() {
             )}
 
             {/* Table */}
-            <div className="rounded-2xl border border-slate-800 overflow-hidden"
+            <div className="rounded-2xl border border-slate-800 overflow-hidden flex flex-col"
                 style={{ background: "rgba(15,23,42,0.7)" }}>
-                <table className="w-full text-sm">
-                    <thead>
-                        <tr className="border-b border-slate-800">
-                            {["Anonymous Name", "Department", "Branch", "Joined", "Status", "Actions"].map(h => (
-                                <th key={h} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
-                            ))}
-                        </tr>
-                    </thead>
-                    <tbody className="divide-y divide-slate-800/60">
-                        {loading ? (
-                            Array.from({ length: 5 }).map((_, i) => (
-                                <tr key={i}>
-                                    {Array.from({ length: 6 }).map((_, j) => (
-                                        <td key={j} className="px-5 py-4">
-                                            <div className="h-3.5 bg-slate-800 rounded animate-pulse w-20" />
-                                        </td>
-                                    ))}
-                                </tr>
-                            ))
-                        ) : sortedUsers.length === 0 ? (
-                            <tr>
-                                <td colSpan={6} className="px-5 py-10 text-center text-slate-500">No users found</td>
+                <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                        <thead>
+                            <tr className="border-b border-slate-800">
+                                <th onClick={() => handleSort("Name")} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-800/50">
+                                    Anonymous Name <SortIcon column="Name" />
+                                </th>
+                                <th onClick={() => handleSort("Department")} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-800/50">
+                                    Department <SortIcon column="Department" />
+                                </th>
+                                <th onClick={() => handleSort("Branch")} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-800/50">
+                                    Branch <SortIcon column="Branch" />
+                                </th>
+                                <th onClick={() => handleSort("JoinedDate")} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-800/50">
+                                    Joined <SortIcon column="JoinedDate" />
+                                </th>
+                                <th onClick={() => handleSort("Status")} className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider cursor-pointer hover:bg-slate-800/50">
+                                    Status <SortIcon column="Status" />
+                                </th>
+                                <th className="px-5 py-3 text-left text-xs font-semibold text-slate-500 uppercase tracking-wider">Actions</th>
                             </tr>
-                        ) : (
-                            sortedUsers.map(u => (
-                                <tr key={u.id} className="hover:bg-slate-800/30 transition-colors">
-                                    <td className="px-5 py-3.5">
-                                        <div className="flex items-center gap-3">
-                                            <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center text-xs font-bold shrink-0">
-                                                {u.anonymousName.charAt(0).toUpperCase()}
-                                            </div>
-                                            <span className="font-medium text-white">{u.anonymousName}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-5 py-3.5 text-slate-400">{u.department || "—"}</td>
-                                    <td className="px-5 py-3.5 text-slate-400">{u.branch || "—"}</td>
-                                    <td className="px-5 py-3.5 text-slate-500 text-xs">
-                                        {u.createdAt ? (
-                                            <>
-                                                {new Date(u.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
-                                                <br />
-                                                {new Date(u.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
-                                            </>
-                                        ) : "—"}
-                                    </td>
-                                    <td className="px-5 py-3.5"><StatusBadge isDeleted={u.isDeleted} /></td>
-                                    <td className="px-5 py-3.5">
-                                        <div className="flex items-center gap-2">
-                                            {!u.isDeleted && (
-                                                <button
-                                                    onClick={() => setModal({ kind: "delete", user: u })}
-                                                    title="Delete User"
-                                                    className="p-1.5 rounded-lg text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-colors">
-                                                    <Trash2 size={15} />
-                                                </button>
-                                            )}
-                                        </div>
-                                    </td>
+                        </thead>
+                        <tbody className="divide-y divide-slate-800/60">
+                            {loading ? (
+                                Array.from({ length: pageSize }).map((_, i) => (
+                                    <tr key={i}>
+                                        {Array.from({ length: 6 }).map((_, j) => (
+                                            <td key={j} className="px-5 py-4">
+                                                <div className="h-3.5 bg-slate-800 rounded animate-pulse w-20" />
+                                            </td>
+                                        ))}
+                                    </tr>
+                                ))
+                            ) : users.length === 0 ? (
+                                <tr>
+                                    <td colSpan={6} className="px-5 py-10 text-center text-slate-500">No users found matching your criteria.</td>
                                 </tr>
-                            ))
-                        )}
-                    </tbody>
-                </table>
+                            ) : (
+                                users.map(u => (
+                                    <tr key={u.id} className="hover:bg-slate-800/30 transition-colors">
+                                        <td className="px-5 py-3.5">
+                                            <div className="flex items-center gap-3">
+                                                <div className="w-8 h-8 rounded-full bg-gradient-to-br from-purple-500 to-violet-600 flex items-center justify-center text-xs font-bold shrink-0">
+                                                    {u.anonymousName.charAt(0).toUpperCase()}
+                                                </div>
+                                                <span className="font-medium text-white">{u.anonymousName}</span>
+                                            </div>
+                                        </td>
+                                        <td className="px-5 py-3.5 text-slate-400">{u.department || "—"}</td>
+                                        <td className="px-5 py-3.5 text-slate-400">{u.branch || "—"}</td>
+                                        <td className="px-5 py-3.5 text-slate-500 text-xs">
+                                            {u.createdAt ? (
+                                                <>
+                                                    {new Date(u.createdAt).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}
+                                                    <br />
+                                                    {new Date(u.createdAt).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true })}
+                                                </>
+                                            ) : "—"}
+                                        </td>
+                                        <td className="px-5 py-3.5"><StatusBadge isDeleted={u.isDeleted} /></td>
+                                        <td className="px-5 py-3.5">
+                                            <div className="flex items-center gap-2">
+                                                {!u.isDeleted && (
+                                                    <button
+                                                        onClick={() => setModal({ kind: "delete", user: u })}
+                                                        title="Delete User"
+                                                        className="p-1.5 rounded-lg text-slate-500 hover:text-red-500 hover:bg-red-500/10 transition-colors">
+                                                        <Trash2 size={15} />
+                                                    </button>
+                                                )}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))
+                            )}
+                        </tbody>
+                    </table>
+                </div>
+                
+                {/* Pagination Footer */}
+                <div className="px-5 py-4 border-t border-slate-800 flex items-center justify-between bg-slate-900/50">
+                    <div className="flex items-center gap-4 text-xs text-slate-400">
+                        <span>
+                            Showing {totalCount === 0 ? 0 : (page - 1) * pageSize + 1} to {Math.min(page * pageSize, totalCount)} of {totalCount} records
+                        </span>
+                        <div className="flex items-center gap-2">
+                            <span>Rows per page:</span>
+                            <select 
+                                value={pageSize} 
+                                onChange={e => setPageSize(Number(e.target.value))}
+                                className="bg-slate-800 border border-slate-700 rounded px-2 py-1 outline-none cursor-pointer text-slate-300"
+                            >
+                                <option value={10}>10</option>
+                                <option value={25}>25</option>
+                                <option value={50}>50</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div className="flex items-center gap-2">
+                        <button 
+                            onClick={() => setPage(p => Math.max(1, p - 1))}
+                            disabled={page === 1}
+                            className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                        >
+                            <ChevronLeft size={16} />
+                        </button>
+                        <span className="text-xs font-medium text-slate-300 px-2">
+                            Page {page} of {Math.max(1, totalPages)}
+                        </span>
+                        <button 
+                            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+                            disabled={page >= totalPages}
+                            className="p-1.5 rounded-lg border border-slate-700 text-slate-400 hover:bg-slate-800 disabled:opacity-50 disabled:hover:bg-transparent transition-colors"
+                        >
+                            <ChevronRight size={16} />
+                        </button>
+                    </div>
+                </div>
             </div>
 
             <ConfirmModal modal={modal} onConfirm={handleConfirm} onClose={() => setModal(null)} />

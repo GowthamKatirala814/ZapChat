@@ -5,11 +5,14 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using System.Net.Http.Json;
+using System.Security.Claims;
+using Admin.Application.Interfaces;
 
 namespace Admin.API.Controllers;
 
 [ApiController]
 [Route("api/reports")]
+[Authorize]
 public class ReportsController : ControllerBase
 {
     // DTOs for external service responses
@@ -19,15 +22,18 @@ public class ReportsController : ControllerBase
     private readonly AdminDbContext _context;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ILogger<ReportsController> _logger;
+    private readonly IUserManagementService _userManagementService;
 
     public ReportsController(
         AdminDbContext context,
         IHttpClientFactory httpClientFactory,
-        ILogger<ReportsController> logger)
+        ILogger<ReportsController> logger,
+        IUserManagementService userManagementService)
     {
         _context = context;
         _httpClientFactory = httpClientFactory;
         _logger = logger;
+        _userManagementService = userManagementService;
     }
 
     [HttpGet]
@@ -59,8 +65,9 @@ public class ReportsController : ControllerBase
 
     public record CreateReportRequest(Guid MessageId, MessageType MessageType, Guid ReportedByUserId, string Reason);
 
+    // Allow authenticated users to submit reports (not just admins)
+    [AllowAnonymous] // Reports are submitted by regular users via Chat/PrivateChat service forwarding
     [HttpPost]
-    [AllowAnonymous]
     public async Task<IActionResult> Create(CreateReportRequest request)
     {
         _logger.LogInformation(
@@ -128,6 +135,42 @@ public class ReportsController : ControllerBase
 
         _context.Reports.Add(report);
         await _context.SaveChangesAsync();
+
+        // Auto-moderation: Remove user after 5 unique reports
+        var uniqueReportersCount = await _context.Reports
+            .Where(r => r.MessageAuthorId == messageAuthorId && !r.IsAutoRemoved)
+            .Select(r => r.ReportedByUserId)
+            .Distinct()
+            .CountAsync();
+
+        if (uniqueReportersCount >= 5)
+        {
+            _logger.LogWarning("Auto-moderation triggered for user {UserId}. {Count} unique reports reached.", messageAuthorId, uniqueReportersCount);
+            
+            try
+            {
+                // Delete user (adminId = Guid.Empty to signify system action)
+                await _userManagementService.DeleteUserAsync(messageAuthorId, "Auto-moderation: Received 5 unique reports", Guid.Empty);
+                
+                // Mark reports as AutoRemoved
+                var userReports = await _context.Reports
+                    .Where(r => r.MessageAuthorId == messageAuthorId && !r.IsAutoRemoved)
+                    .ToListAsync();
+                
+                foreach (var userReport in userReports)
+                {
+                    userReport.IsAutoRemoved = true;
+                    userReport.Status = ReportStatus.AutoRemoved;
+                }
+                await _context.SaveChangesAsync();
+                
+                _logger.LogInformation("Auto-moderation completed successfully for user {UserId}.", messageAuthorId);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Auto-moderation failed to delete user {UserId}.", messageAuthorId);
+            }
+        }
 
         return CreatedAtAction(nameof(GetById), new { id = report.Id }, report);
     }
@@ -250,18 +293,19 @@ public class ReportsController : ControllerBase
         if (report == null) return NotFound();
 
         report.Status = ReportStatus.Reviewed;
-        
+
+        var performedBy = GetCurrentUserId();
         var auditLog = new AuditLog
         {
             Id = Guid.NewGuid(),
             Action = "Report Reviewed",
             EntityType = "Report",
             EntityId = report.Id.ToString(),
-            PerformedBy = Guid.Empty, // Would be current user in real auth
+            PerformedBy = performedBy,
             Timestamp = DateTime.UtcNow
         };
         _context.AuditLogs.Add(auditLog);
-        
+
         await _context.SaveChangesAsync();
 
         return NoContent();
@@ -275,13 +319,14 @@ public class ReportsController : ControllerBase
 
         report.Status = ReportStatus.Ignored;
 
+        var performedBy = GetCurrentUserId();
         var auditLog = new AuditLog
         {
             Id = Guid.NewGuid(),
             Action = "Report Ignored",
             EntityType = "Report",
             EntityId = report.Id.ToString(),
-            PerformedBy = Guid.Empty, // Would be current user in real auth
+            PerformedBy = performedBy,
             Timestamp = DateTime.UtcNow
         };
         _context.AuditLogs.Add(auditLog);
@@ -289,5 +334,11 @@ public class ReportsController : ControllerBase
         await _context.SaveChangesAsync();
 
         return NoContent();
+    }
+
+    private Guid GetCurrentUserId()
+    {
+        var claim = User.FindFirstValue(ClaimTypes.NameIdentifier);
+        return Guid.TryParse(claim, out var id) ? id : Guid.Empty;
     }
 }

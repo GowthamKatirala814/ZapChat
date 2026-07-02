@@ -12,7 +12,7 @@ export default function AppFooter({ className = "" }: Props) {
             px-5 ${className}`}>
             <div className="flex items-center gap-1.5 text-xs text-slate-600">
                 <Zap size={12} className="text-sky-500" />
-                <span>ZapPulse</span>
+                <span>ZapChat</span>
                 <span className="mx-1">·</span>
                 <span>Anonymous Enterprise Messaging</span>
             </div>

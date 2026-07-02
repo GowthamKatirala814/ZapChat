@@ -1,14 +1,15 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Send, X } from "lucide-react";
+import { ArrowLeft, Send, X, ShieldAlert, ShieldCheck } from "lucide-react";
 import { getUserById } from "../../api/authApi";
-import { createConversation, getConversation, deletePrivateMessage } from "../../api/privateChatApi";
+import { createConversation, getConversation, deletePrivateMessage, blockUser, unblockUser, getBlockedUsers } from "../../api/privateChatApi";
 import { getPrivateChatConnection } from "../../hubs/privateChatHub";
 import type { User } from "../../types/User";
 import type { PrivateMessage, PrivateMessageReaction } from "../../types/PrivateMessage";
 import type { HubConnection } from "@microsoft/signalr";
 import PrivateMessageBubble from "../../components/PrivateMessageBubble";
 import TopNav from "../../components/TopNav";
+import { useTheme } from "../../context/ThemeContext";
 
 interface ServerMessage {
     id: string;
@@ -29,6 +30,7 @@ interface ServerMessage {
 export default function PrivateChatPage() {
     const { userId: receiverUserId } = useParams<{ userId: string }>();
     const navigate = useNavigate();
+    const { isDark } = useTheme();
 
     const [selectedOtherUserId] = useState<string | undefined>(receiverUserId);
     const [receiver, setReceiver] = useState<User | null>(null);
@@ -37,6 +39,23 @@ export default function PrivateChatPage() {
     const [sending, setSending] = useState(false);
     const [ready, setReady] = useState(false);
     const [replyingTo, setReplyingTo] = useState<PrivateMessage | null>(null);
+    const [blockedMessage, setBlockedMessage] = useState<{ category: string; reason: string } | null>(null);
+    const [isBlocked, setIsBlocked] = useState(false);
+
+    const toggleBlock = async () => {
+        if (!selectedOtherUserId || !currentUserId) return;
+        try {
+            if (isBlocked) {
+                await unblockUser(currentUserId, selectedOtherUserId);
+                setIsBlocked(false);
+            } else {
+                await blockUser(currentUserId, selectedOtherUserId);
+                setIsBlocked(true);
+            }
+        } catch (err) {
+            console.error("Failed to toggle block", err);
+        }
+    };
 
     // Refs — always hold latest values without triggering re-renders
     const conversationIdRef = useRef("");
@@ -51,11 +70,17 @@ export default function PrivateChatPage() {
         messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }, [messages]);
 
-    // Load receiver's anonymous name
+    // Load receiver's anonymous name and block status
     useEffect(() => {
         if (!selectedOtherUserId) return;
         getUserById(selectedOtherUserId).then(setReceiver).catch(console.error);
-    }, [selectedOtherUserId]);
+
+        getBlockedUsers(currentUserId)
+            .then(blockedIds => {
+                setIsBlocked(blockedIds.includes(selectedOtherUserId));
+            })
+            .catch(console.error);
+    }, [selectedOtherUserId, currentUserId]);
 
     // Main init: conversation + history + SignalR
     useEffect(() => {
@@ -112,10 +137,38 @@ export default function PrivateChatPage() {
                     }));
                 };
 
-                const handleMessageDeleted = (data: { messageId: string; deletedAt: string }) => {
-                    if (!isMounted) return;
+                const handleMessageDeleted = (data: { messageId: string; deletedAt: string; deletedBy: string }) => {
                     setMessages(prev => prev.map(m =>
-                        m.id === data.messageId ? { ...m, isDeleted: true, deletedAt: data.deletedAt } : m
+                        m.id === data.messageId
+                            ? {
+                                ...m,
+                                isDeleted: data.deletedBy === "User",
+                                deletedBy: data.deletedBy,
+                                deletedAt: data.deletedAt,
+                                content: ""
+                            }
+                            : m
+                    ));
+                };
+
+                const handleBlocked = (data: { category: string; reason: string }) => {
+                    setBlockedMessage(data);
+                    setTimeout(() => setBlockedMessage(null), 5000);
+                };
+
+                const handleMessageEdited = (data: { messageId: string; content: string; editedAt: string; isEdited: boolean }) => {
+                    setMessages(prev => prev.map(m =>
+                        m.id === data.messageId
+                            ? { ...m, content: data.content, isEdited: data.isEdited, editedAt: data.editedAt }
+                            : m
+                    ));
+                };
+
+                const handleMessageRead = (data: { messageId: string; readAt: string }) => {
+                    setMessages(prev => prev.map(m =>
+                        m.id === data.messageId
+                            ? { ...m, isRead: true }
+                            : m
                     ));
                 };
 
@@ -128,7 +181,19 @@ export default function PrivateChatPage() {
                 conn.off("MessageDeleted", handleMessageDeleted);
                 conn.on("MessageDeleted", handleMessageDeleted);
 
+                conn.off("PrivateMessageBlocked", handleBlocked);
+                conn.on("PrivateMessageBlocked", handleBlocked);
+
+                conn.off("MessageEdited", handleMessageEdited);
+                conn.on("MessageEdited", handleMessageEdited);
+
+                conn.off("MessageRead", handleMessageRead);
+                conn.on("MessageRead", handleMessageRead);
+
                 (connectionRef.current as any)._messageDeletedHandler = handleMessageDeleted;
+                (connectionRef.current as any)._blockedHandler = handleBlocked;
+                (connectionRef.current as any)._messageEditedHandler = handleMessageEdited;
+                (connectionRef.current as any)._messageReadHandler = handleMessageRead;
 
                 if (conn.state === "Disconnected") {
                     await conn.start();
@@ -153,6 +218,9 @@ export default function PrivateChatPage() {
                 if (conn._receiveHandler) conn.off("ReceivePrivateMessage", conn._receiveHandler);
                 if (conn._reactionHandler) conn.off("ReactionAdded", conn._reactionHandler);
                 if (conn._messageDeletedHandler) conn.off("MessageDeleted", conn._messageDeletedHandler);
+                if (conn._blockedHandler) conn.off("PrivateMessageBlocked", conn._blockedHandler);
+                if (conn._messageEditedHandler) conn.off("MessageEdited", conn._messageEditedHandler);
+                if (conn._messageReadHandler) conn.off("MessageRead", conn._messageReadHandler);
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -224,16 +292,36 @@ export default function PrivateChatPage() {
         }
     }, []);
 
+    const handleEdit = useCallback(async (messageId: string, newContent: string) => {
+        const conn = connectionRef.current;
+        if (!conn || conn.state !== "Connected") return;
+        try {
+            await conn.invoke("EditPrivateMessage", messageId, newContent);
+        } catch (err) {
+            console.error("[PrivateChatHub] EditPrivateMessage error:", err);
+        }
+    }, []);
+
+    const headerBg     = isDark ? "#0f172a" : "#ffffff";
+    const headerBorder = isDark ? "rgba(255,255,255,0.07)" : "#e2e8f0";
+    const headerText   = isDark ? "#f1f5f9" : "#0f172a";
+    const headerSub    = isDark ? "#64748b" : "#475569";
+    const chatBg       = isDark ? "#0c1220" : "#f0f9ff";
+    const inputBg      = isDark ? "#0f172a" : "#ffffff";
+    const inputBorder  = isDark ? "rgba(255,255,255,0.1)" : "#e2e8f0";
+    const inputText    = isDark ? "#f1f5f9" : "#0f172a";
+    const replyBg      = isDark ? "rgba(14,165,233,0.1)" : "#eff6ff";
+
     return (
-        <div className="h-screen flex flex-col overflow-hidden" style={{ background: "#F8FAFC" }}>
+        <div className="h-screen flex flex-col overflow-hidden" style={{ background: chatBg }}>
             <TopNav />
             {/* Main Chat Area */}
             {selectedOtherUserId ? (
                 <div className="flex-1 flex flex-col overflow-hidden">
                     {/* Header */}
                     <div
-                        className="px-5 py-3 flex items-center gap-3 shrink-0"
-                        style={{ background: "#FFFFFF", borderBottom: "1px solid #E2E8F0" }}
+                        className="px-4 sm:px-5 py-3 flex items-center gap-3 shrink-0"
+                        style={{ background: headerBg, borderBottom: `1px solid ${headerBorder}` }}
                     >
                         <button
                             onClick={() => navigate("/dashboard")}
@@ -248,16 +336,53 @@ export default function PrivateChatPage() {
                             {receiver?.anonymousName?.charAt(0).toUpperCase() ?? "?"}
                         </div>
 
-                        <div>
-                            <div className="font-semibold text-slate-900 text-sm">
+                        <div className="flex-1 min-w-0">
+                            <div className="font-semibold text-sm" style={{ color: headerText }}>
                                 {receiver?.anonymousName ?? "Loading…"}
                             </div>
-                            <div className="text-xs text-emerald-600">Private · Encrypted</div>
+                            <div className="text-xs flex items-center gap-2" style={{ color: "#059669" }}>
+                                Private · Encrypted {isBlocked && <span className="text-rose-500 font-bold ml-2">BLOCKED</span>}
+                            </div>
                         </div>
+
+                        <button
+                            onClick={toggleBlock}
+                            className={`p-1.5 rounded-lg transition-colors shrink-0 flex items-center gap-1.5 text-xs font-semibold ${isBlocked ? "bg-rose-50 text-rose-600 hover:bg-rose-100" : "bg-slate-100 text-slate-600 hover:bg-slate-200"}`}
+                            title={isBlocked ? "Unblock user" : "Block user"}
+                        >
+                            {isBlocked ? <ShieldCheck size={14} /> : <ShieldAlert size={14} />}
+                            <span className="hidden sm:inline">{isBlocked ? "Unblock" : "Block"}</span>
+                        </button>
                     </div>
 
+                    {/* Moderation Warning Toast */}
+                    {blockedMessage && (
+                        <div
+                            className="absolute top-[80px] left-1/2 -translate-x-1/2 flex items-start gap-3 
+                                       px-4 py-3 rounded-lg shadow-lg z-50 text-sm w-[90%] max-w-[400px]
+                                       animate-in fade-in slide-in-from-top-4"
+                            style={{
+                                background: "#FFFBEB", // Amber-50
+                                border: "1px solid #FCD34D", // Amber-300
+                                color: "#92400E" // Amber-900
+                            }}
+                        >
+                            <span className="text-lg">🚫</span>
+                            <div className="flex-1">
+                                <div className="font-semibold mb-0.5">Message Blocked</div>
+                                <div className="opacity-90">{blockedMessage.reason}</div>
+                            </div>
+                            <button
+                                onClick={() => setBlockedMessage(null)}
+                                className="opacity-60 hover:opacity-100 transition-opacity p-1"
+                            >
+                                <X size={16} />
+                            </button>
+                        </div>
+                    )}
+
                     {/* Messages */}
-                    <div className="flex-1 overflow-y-auto px-5 py-4 space-y-2" style={{ background: "#F8FAFC" }}>
+                    <div className="flex-1 overflow-y-auto px-4 sm:px-5 py-4 space-y-2" style={{ background: chatBg }}>
                         {messages.length === 0 && ready && (
                             <div className="flex flex-col items-center justify-center h-full text-slate-400 gap-2">
                                 <span className="text-4xl">🔒</span>
@@ -274,7 +399,7 @@ export default function PrivateChatPage() {
                                     setReplyingTo(m);
                                     inputRef.current?.focus();
                                 }}
-                                onReact={(emoji) => handleReaction(m.id!, emoji)}
+                                onReact={(emoji: string) => handleReaction(m.id!, emoji)}
                                 onDelete={m.id ? async () => {
                                     try {
                                         await deletePrivateMessage(m.id!);
@@ -287,65 +412,65 @@ export default function PrivateChatPage() {
                                         console.error("[PrivateChat] DeleteMessage error:", err);
                                     }
                                 } : undefined}
+                                onEdit={m.id ? (newContent: string) => handleEdit(m.id!, newContent) : undefined}
                             />
                         ))}
 
                         <div ref={messagesEndRef} />
-                    </div>
-
-                    {/* Reply preview */}
-                    {replyingTo && (
-                        <div
-                            className="mx-4 mb-1 px-3 py-2 rounded flex items-center justify-between"
-                            style={{ background: "#EFF6FF", borderLeft: "2px solid #38BDF8" }}
-                        >
-                            <div className="min-w-0">
-                                <div className="text-xs text-sky-600 font-medium">
-                                    Replying to {replyingTo.senderName}
+                        {/* Reply preview */}
+                        {replyingTo && (
+                            <div
+                                className="mx-3 sm:mx-4 mb-1 px-3 py-2 rounded flex items-center justify-between"
+                                style={{ background: replyBg, borderLeft: "2px solid #38BDF8" }}
+                            >
+                                <div className="min-w-0">
+                                    <div className="text-xs font-medium" style={{ color: "#0284c7" }}>
+                                        Replying to {replyingTo.senderName}
+                                    </div>
+                                    <div className="text-xs truncate" style={{ color: headerSub }}>
+                                        {replyingTo.content}
+                                    </div>
                                 </div>
-                                <div className="text-xs text-slate-500 truncate">
-                                    {replyingTo.content}
-                                </div>
+                                <button
+                                    onClick={() => setReplyingTo(null)}
+                                    className="ml-2 shrink-0 transition-opacity"
+                                    style={{ color: headerSub }}
+                                >
+                                    <X size={14} />
+                                </button>
                             </div>
-                            <button
-                                onClick={() => setReplyingTo(null)}
-                                className="text-slate-400 hover:text-slate-700 ml-2 shrink-0">
-                                <X size={14} />
-                            </button>
-                        </div>
-                    )}
-
-                    {/* Input */}
-                    <div className="border-t border-slate-200 px-4 py-3 bg-white shrink-0">
-                        <div className="flex items-center gap-3">
-                            <input
-                                ref={inputRef}
-                                value={messageInput}
-                                onChange={e => setMessageInput(e.target.value)}
-                                onKeyDown={e => {
-                                    if (e.key === "Enter" && !e.shiftKey) {
-                                        e.preventDefault();
-                                        sendMessage();
-                                    }
-                                    if (e.key === "Escape") setReplyingTo(null);
-                                }}
-                                placeholder={replyingTo ? `Reply to ${replyingTo.senderName}…` : `Message ${receiver?.anonymousName ?? "…"}`}
-                                disabled={!ready}
-                                className="
-                            flex-1 bg-white border border-slate-200 rounded-xl
-                            px-4 py-3 text-sm text-slate-900 outline-none
-                            focus:border-sky-400 placeholder:text-slate-400
-                            disabled:opacity-50 transition-colors"
-                            />
-                            <button
-                                onClick={sendMessage}
-                                disabled={!messageInput.trim() || sending || !ready}
-                                className="
-                            p-3 rounded-xl bg-sky-500 hover:bg-sky-600 text-white
-                            disabled:opacity-40 disabled:cursor-not-allowed
-                            transition-colors shrink-0">
-                                <Send size={17} />
-                            </button>
+                        )}
+                        {/* Input */}
+                        <div className="shrink-0 px-3 sm:px-4 py-3" style={{ background: inputBg, borderTop: `1px solid ${inputBorder}` }}>
+                            <div className="flex items-center gap-2 sm:gap-3">
+                                <input
+                                    ref={inputRef}
+                                    value={messageInput}
+                                    onChange={e => setMessageInput(e.target.value)}
+                                    onKeyDown={e => {
+                                        if (e.key === "Enter" && !e.shiftKey) {
+                                            e.preventDefault();
+                                            sendMessage();
+                                        }
+                                        if (e.key === "Escape") setReplyingTo(null);
+                                    }}
+                                    placeholder={replyingTo ? `Reply to ${replyingTo.senderName}…` : `Message ${receiver?.anonymousName ?? "…"}`}
+                                    disabled={!ready}
+                                    className="flex-1 rounded-xl px-3 sm:px-4 py-2.5 sm:py-3 text-sm outline-none transition-colors disabled:opacity-50"
+                                    style={{
+                                        background: isDark ? "rgba(255,255,255,0.06)" : "#f8fafc",
+                                        border: `1px solid ${inputBorder}`,
+                                        color: inputText,
+                                    }}
+                                />
+                                <button
+                                    onClick={sendMessage}
+                                    disabled={!messageInput.trim() || sending || isBlocked}
+                                    className="p-3 rounded-xl bg-sky-500 hover:bg-sky-600 text-white disabled:opacity-40 disabled:cursor-not-allowed transition-colors shrink-0 shadow-sm"
+                                >
+                                    <Send size={18} />
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

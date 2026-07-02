@@ -107,6 +107,7 @@ public class PrivateMessagesController : ControllerBase
 
         message.IsDeleted = true;
         message.DeletedAt = DateTime.UtcNow;
+        message.DeletedBy = "User";
         await _context.SaveChangesAsync();
 
         var conversation = await _context.Conversations
@@ -114,13 +115,73 @@ public class PrivateMessagesController : ControllerBase
 
         if (conversation != null)
         {
-            var payload = new { messageId = id, deletedAt = message.DeletedAt };
+            // ── 1. Broadcast MessageDeleted to both users ──────────────────────
+            var deletedPayload = new { messageId = id, deletedAt = message.DeletedAt, deletedBy = "User" };
             await hubContext.Clients
                 .User(conversation.User1Id.ToString())
-                .SendAsync("MessageDeleted", payload);
+                .SendAsync("MessageDeleted", deletedPayload);
             await hubContext.Clients
                 .User(conversation.User2Id.ToString())
-                .SendAsync("MessageDeleted", payload);
+                .SendAsync("MessageDeleted", deletedPayload);
+
+            // ── 2. If deleted message was the LastMessagePreview, recompute ────
+            if (conversation.LastMessagePreview == message.Content ||
+                (conversation.LastMessageAt.HasValue &&
+                 Math.Abs((conversation.LastMessageAt.Value - message.SentAt).TotalSeconds) < 1))
+            {
+                // Find most recent non-deleted message in this conversation
+                var previousMessage = await _context.Messages
+                    .Where(m => m.ConversationId == conversation.Id &&
+                                !m.IsDeleted &&
+                                !m.IsRemoved &&
+                                m.Id != id)
+                    .OrderByDescending(m => m.SentAt)
+                    .FirstOrDefaultAsync();
+
+                conversation.LastMessageAt = previousMessage?.SentAt;
+                conversation.LastMessagePreview = previousMessage?.Content ?? "";
+                await _context.SaveChangesAsync();
+
+                // Broadcast the updated conversation preview to both users
+                var convUpdatedUser1 = new
+                {
+                    conversationId = conversation.Id.ToString(),
+                    lastMessageAt = conversation.LastMessageAt,
+                    lastMessageContent = conversation.LastMessagePreview,
+                    lastMessageSenderName = previousMessage?.SenderName ?? "",
+                    unreadCount = -1 // don't change unread counts
+                };
+                var convUpdatedUser2 = new
+                {
+                    conversationId = conversation.Id.ToString(),
+                    lastMessageAt = conversation.LastMessageAt,
+                    lastMessageContent = conversation.LastMessagePreview,
+                    lastMessageSenderName = previousMessage?.SenderName ?? "",
+                    unreadCount = -1 // don't change unread counts
+                };
+
+                await hubContext.Clients
+                    .User(conversation.User1Id.ToString())
+                    .SendAsync("ConversationUpdated", convUpdatedUser1);
+                await hubContext.Clients
+                    .User(conversation.User2Id.ToString())
+                    .SendAsync("ConversationUpdated", convUpdatedUser2);
+            }
+
+            // ── 3. Delete the notification linked to this message ──────────────
+            try
+            {
+                var notifUrl = _configuration["ServiceUrls:NotificationService"];
+                if (!string.IsNullOrEmpty(notifUrl))
+                {
+                    var client = _httpClientFactory.CreateClient();
+                    await client.DeleteAsync($"{notifUrl}/api/notification/by-message/{id}");
+                }
+            }
+            catch
+            {
+                // Notification cleanup failure must not block the delete response
+            }
         }
 
         return Ok();

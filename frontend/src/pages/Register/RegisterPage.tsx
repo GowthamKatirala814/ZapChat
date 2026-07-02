@@ -345,7 +345,7 @@ export default function RegisterPage() {
         1: {
             icon: "📋",
             title: "Create your account",
-            subtitle: "Join ZapPulse in 3 easy steps",
+            subtitle: "Join ZapChat in 3 easy steps",
             bullets: [
                 "Full name & work email",
                 "Your department & branch",
@@ -482,7 +482,7 @@ export default function RegisterPage() {
                             <span className="text-xl font-black text-white">Z</span>
                         </div>
                         <span className="text-2xl font-black text-white">
-                            Zap<span style={{ color: "#06b6d4" }}>Pulse</span>
+                            Zap<span style={{ color: "#06b6d4" }}>Chat</span>
                         </span>
                     </div>
 
@@ -535,7 +535,7 @@ export default function RegisterPage() {
                                 <div>
                                     <p className="text-white font-bold text-xl mb-1">Account Created!</p>
                                     <p className="text-slate-400 text-sm">
-                                        You can now login to ZapPulse. Redirecting…
+                                        You can now login to ZapChat. Redirecting…
                                     </p>
                                 </div>
                             </div>
@@ -971,7 +971,7 @@ export default function RegisterPage() {
 
                     {/* Footer */}
                     <p className="text-center text-slate-600 text-xs mt-6">
-                        By creating an account, you agree to ZapPulse{" "}
+                        By creating an account, you agree to ZapChat{" "}
                         <a href="#" className="underline hover:text-slate-400 transition-colors">
                             Terms of Service
                         </a>{" "}

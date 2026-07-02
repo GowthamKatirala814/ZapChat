@@ -22,6 +22,35 @@ namespace Auth.Infrastructure.Persistence.Migrations
 
             SqlServerModelBuilderExtensions.UseIdentityColumns(modelBuilder);
 
+            modelBuilder.Entity("Auth.Domain.Entities.AiHealthEvent", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("Message")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("NewStatus")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<string>("PreviousStatus")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime2");
+
+                    b.HasKey("Id");
+
+                    b.ToTable("AiHealthEvents");
+                });
+
             modelBuilder.Entity("Auth.Domain.Entities.AnonymousProfile", b =>
                 {
                     b.Property<Guid>("Id")
@@ -50,6 +79,96 @@ namespace Auth.Infrastructure.Persistence.Migrations
                     b.HasIndex("UserId");
 
                     b.ToTable("AnonymousProfiles");
+                });
+
+            modelBuilder.Entity("Auth.Domain.Entities.GeminiUsage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("AuthenticationErrors")
+                        .HasColumnType("int");
+
+                    b.Property<int>("BlockedMessages")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ConfigurationErrors")
+                        .HasColumnType("int");
+
+                    b.Property<string>("CurrentStatus")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("Date")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("EmailSent100")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("EmailSent50")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("EmailSent90")
+                        .HasColumnType("bit");
+
+                    b.Property<int>("Error429s")
+                        .HasColumnType("int");
+
+                    b.Property<int>("EstimatedDailyQuota")
+                        .HasColumnType("int");
+
+                    b.Property<int>("FailedRequests")
+                        .HasColumnType("int");
+
+                    b.Property<int>("InvalidResponses")
+                        .HasColumnType("int");
+
+                    b.Property<string>("LastErrorMessage")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("LastFailedModeration")
+                        .HasColumnType("datetime2");
+
+                    b.Property<DateTime?>("LastSuccessfulModeration")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastThresholdReached")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime>("LastUpdated")
+                        .HasColumnType("datetime2");
+
+                    b.Property<bool>("QuotaExhausted")
+                        .HasColumnType("bit");
+
+                    b.Property<DateTime?>("RecoveryTime")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("RequestsToday")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SafeMessages")
+                        .HasColumnType("int");
+
+                    b.Property<int>("ServerErrors")
+                        .HasColumnType("int");
+
+                    b.Property<int>("SuccessfulRequests")
+                        .HasColumnType("int");
+
+                    b.Property<int>("TimeoutErrors")
+                        .HasColumnType("int");
+
+                    b.Property<double>("UsagePercentage")
+                        .HasColumnType("float");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Date")
+                        .IsUnique();
+
+                    b.ToTable("GeminiUsages");
                 });
 
             modelBuilder.Entity("Auth.Domain.Entities.PasswordResetOtp", b =>
@@ -105,12 +224,15 @@ namespace Auth.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Token")
                         .IsRequired()
-                        .HasColumnType("nvarchar(max)");
+                        .HasColumnType("nvarchar(450)");
 
                     b.Property<Guid>("UserId")
                         .HasColumnType("uniqueidentifier");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("Token")
+                        .IsUnique();
 
                     b.HasIndex("UserId");
 
@@ -224,8 +346,12 @@ namespace Auth.Infrastructure.Persistence.Migrations
 
                     b.HasKey("Id");
 
+                    b.HasIndex("CreatedAt");
+
                     b.HasIndex("Email")
                         .IsUnique();
+
+                    b.HasIndex("IsDeleted");
 
                     b.ToTable("Users");
                 });

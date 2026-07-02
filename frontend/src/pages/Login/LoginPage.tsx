@@ -24,19 +24,6 @@ export default function LoginPage() {
         formState: { errors, isSubmitting },
     } = useForm<LoginForm>();
 
-    // Decode the role claim embedded in the JWT — determines redirect destination
-    const decodeRole = (token: string): "admin" | "user" => {
-        try {
-            const payload = JSON.parse(atob(token.split(".")[1]));
-            const roleKey = "http://schemas.microsoft.com/ws/2008/06/identity/claims/role";
-            const raw: string | string[] | undefined = payload[roleKey] ?? payload["role"];
-            const roles = Array.isArray(raw) ? raw : raw ? [raw] : [];
-            return roles.some((r: string) => r.toLowerCase() === "admin") ? "admin" : "user";
-        } catch {
-            return "user";
-        }
-    };
-
     const onSubmit = async (data: LoginForm) => {
         setApiError(null);
         try {
@@ -45,11 +32,11 @@ export default function LoginPage() {
                 password: data.password,
             });
 
-            const actualRole = decodeRole(result.token);
+            // Role is returned directly from the backend — no token decoding needed
+            const actualRole = result.role ?? "user";
 
             dispatch(
                 loginSuccess({
-                    token: result.token,
                     userId: result.userId,
                     anonymousName: result.anonymousName,
                     email: data.email,
@@ -66,6 +53,7 @@ export default function LoginPage() {
             setApiError(message);
         }
     };
+
 
     return (
         <div className="min-h-screen flex bg-slate-950">
@@ -123,7 +111,7 @@ export default function LoginPage() {
                     </div>
 
                     <h1 className="text-5xl font-black text-white mb-3 tracking-tight">
-                        Zap<span style={{ color: "#06b6d4" }}>Pulse</span>
+                        Zap<span style={{ color: "#06b6d4" }}>Chat</span>
                     </h1>
                     <p className="text-slate-400 text-lg font-medium mb-12">
                         Enterprise-grade anonymous messaging
@@ -194,7 +182,7 @@ export default function LoginPage() {
                             <span className="text-xl font-black text-white">Z</span>
                         </div>
                         <span className="text-2xl font-black text-white">
-                            Zap<span style={{ color: "#38BDF8" }}>Com</span>
+                            Zap<span style={{ color: "#38BDF8" }}>Chat</span>
                         </span>
                     </div>
 
@@ -204,7 +192,7 @@ export default function LoginPage() {
                         <p className="text-slate-400">
                             Sign in to your{" "}
                             <span style={{ color: "#0EA5E9" }} className="font-medium">
-                                ZapCom
+                                ZapChat
                             </span>{" "}
                             workspace
                         </p>
@@ -446,7 +434,7 @@ export default function LoginPage() {
 
                     {/* Footer note */}
                     <p className="text-center text-slate-600 text-xs mt-6">
-                        By signing in, you agree to ZapCom{" "}
+                        By signing in, you agree to ZapChat{" "}
                         <a href="#" className="underline hover:text-slate-400 transition-colors">
                             Terms of Service
                         </a>{" "}

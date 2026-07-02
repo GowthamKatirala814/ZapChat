@@ -18,6 +18,7 @@ import AdminDashboardPage from "../pages/Admin/AdminDashboardPage";
 import AdminUsersPage from "../pages/Admin/AdminUsersPage";
 import AdminModerationPage from "../pages/Admin/AdminModerationPage";
 import AdminAnalyticsPage from "../pages/Admin/AdminAnalyticsPage";
+import AdminAiHealthPage from "../pages/Admin/AdminAiHealthPage";
 import AdminRoomsPage from "../pages/Admin/AdminRoomsPage";
 import AdminAuditLogsPage from "../pages/Admin/AdminAuditLogsPage";
 import ForgotPasswordPage from "../pages/ForgotPassword/ForgotPasswordPage";
@@ -97,6 +98,7 @@ export default function AppRoutes() {
                     <Route index element={<AdminDashboardPage />} />
                     <Route path="users" element={<AdminUsersPage />} />
                     <Route path="reports" element={<AdminModerationPage />} />
+                    <Route path="ai-health" element={<AdminAiHealthPage />} />
                     <Route path="analytics" element={<AdminAnalyticsPage />} />
                     <Route path="rooms" element={<AdminRoomsPage />} />
                     <Route path="audit-logs" element={<AdminAuditLogsPage />} />

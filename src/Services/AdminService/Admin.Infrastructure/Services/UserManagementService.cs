@@ -64,6 +64,54 @@ public class UserManagementService : IUserManagementService
         }
     }
 
+    public async Task<PaginatedResult<AdminUserDto>> GetUsersPaginatedAsync(UserQueryParameters parameters)
+    {
+        try
+        {
+            var client = _httpClientFactory.CreateClient("AuthService");
+            
+            // Build query string from parameters
+            var queryParams = new List<string>
+            {
+                $"Page={parameters.Page}",
+                $"PageSize={parameters.PageSize}"
+            };
+
+            if (!string.IsNullOrWhiteSpace(parameters.Search))
+                queryParams.Add($"Search={Uri.EscapeDataString(parameters.Search)}");
+            if (!string.IsNullOrWhiteSpace(parameters.Status))
+                queryParams.Add($"Status={Uri.EscapeDataString(parameters.Status)}");
+            if (!string.IsNullOrWhiteSpace(parameters.Department))
+                queryParams.Add($"Department={Uri.EscapeDataString(parameters.Department)}");
+            if (!string.IsNullOrWhiteSpace(parameters.Branch))
+                queryParams.Add($"Branch={Uri.EscapeDataString(parameters.Branch)}");
+            if (!string.IsNullOrWhiteSpace(parameters.SortBy))
+                queryParams.Add($"SortBy={Uri.EscapeDataString(parameters.SortBy)}");
+            
+            queryParams.Add($"SortDesc={parameters.SortDesc.ToString().ToLowerInvariant()}");
+
+            var url = $"api/auth/users/paginated?{string.Join("&", queryParams)}";
+            
+            var result = await client.GetFromJsonAsync<PaginatedResult<AuthUserRecord>>(url);
+            
+            if (result == null) 
+                return new PaginatedResult<AdminUserDto>();
+
+            return new PaginatedResult<AdminUserDto>
+            {
+                Page = result.Page,
+                PageSize = result.PageSize,
+                TotalCount = result.TotalCount,
+                Items = result.Items.Select(MapToAdminUserDto)
+            };
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Failed to fetch paginated users from Auth Service.");
+            return new PaginatedResult<AdminUserDto>();
+        }
+    }
+
     public async Task DeleteUserAsync(Guid userId, string reason, Guid adminId)
     {
         _logger.LogInformation("DeleteUserAsync called - UserId: {UserId}, AdminId: {AdminId}, Reason: {Reason}", userId, adminId, reason);

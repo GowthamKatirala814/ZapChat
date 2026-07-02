@@ -35,6 +35,16 @@ public class UserManagementController : ControllerBase
         return Ok(users);
     }
 
+    [HttpGet("paginated")]
+    [ProducesResponseType(StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status401Unauthorized)]
+    [ProducesResponseType(StatusCodes.Status403Forbidden)]
+    public async Task<IActionResult> GetUsersPaginated([FromQuery] UserQueryParameters parameters)
+    {
+        var result = await _userManagementService.GetUsersPaginatedAsync(parameters);
+        return Ok(result);
+    }
+
     /// <summary>
     /// Searches users by AnonymousName, Department, or Branch.
     /// </summary>

@@ -3,6 +3,7 @@ using Admin.Application.DTOs;
 using Admin.Application.Interfaces;
 using Admin.Domain.Entities;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 using Admin.Infrastructure.Configuration;
 
 namespace Admin.Infrastructure.Services;
@@ -17,6 +18,7 @@ public class RoomManagementService : IRoomManagementService
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly ServiceUrlsOptions _serviceUrls;
     private readonly IDashboardService _dashboardService;
+    private readonly ILogger<RoomManagementService> _logger;
 
     public RoomManagementService(
         IRoomManagementRepository repository,
@@ -26,7 +28,8 @@ public class RoomManagementService : IRoomManagementService
         IAuditLogService auditLogService,
         IHttpClientFactory httpClientFactory,
         IOptions<ServiceUrlsOptions> serviceUrls,
-        IDashboardService dashboardService)
+        IDashboardService dashboardService,
+        ILogger<RoomManagementService> logger)
     {
         _repository = repository;
         _membershipRepository = membershipRepository;
@@ -36,6 +39,7 @@ public class RoomManagementService : IRoomManagementService
         _httpClientFactory = httpClientFactory;
         _serviceUrls = serviceUrls.Value;
         _dashboardService = dashboardService;
+        _logger = logger;
     }
 
     public async Task<IEnumerable<RoomDto>> GetRoomsAsync(bool includeDeleted = false)
@@ -87,7 +91,7 @@ public class RoomManagementService : IRoomManagementService
     {
         try
         {
-            var client = _httpClientFactory.CreateClient();
+            var client = _httpClientFactory.CreateClient("ChatService");
             var payload = new
             {
                 Id = room.Id,
@@ -98,16 +102,16 @@ public class RoomManagementService : IRoomManagementService
             var response = await client.PostAsJsonAsync($"{_serviceUrls.ChatService}/api/admin/rooms", payload);
             if (response.IsSuccessStatusCode)
             {
-                Console.WriteLine($"[RoomManagementService] Room '{room.Name}' synced to ChatService");
+                _logger.LogInformation("[RoomManagementService] Room '{RoomName}' synced to ChatService", room.Name);
             }
             else
             {
-                Console.WriteLine($"[RoomManagementService] Failed to sync room to ChatService: {response.StatusCode}");
+                _logger.LogWarning("[RoomManagementService] Failed to sync room to ChatService: {StatusCode}", response.StatusCode);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[RoomManagementService] Error syncing room to ChatService: {ex.Message}");
+            _logger.LogError(ex, "[RoomManagementService] Error syncing room '{RoomName}' to ChatService", room.Name);
             // Don't fail room creation if sync fails - room will still work in AdminService
         }
     }
@@ -174,7 +178,7 @@ public class RoomManagementService : IRoomManagementService
         {
             // Room not in Admin DB - might be an old room only in ChatService
             // Try to delete from ChatService directly
-            Console.WriteLine($"[RoomManagementService] Room {roomId} not found in Admin DB, attempting ChatService deletion");
+            _logger.LogWarning("[RoomManagementService] Room {RoomId} not found in Admin DB, attempting ChatService deletion", roomId);
             await SyncRoomDeletionWithChatServiceAsync(roomId);
 
             // Log the deletion even if room wasn't in our DB
@@ -200,20 +204,20 @@ public class RoomManagementService : IRoomManagementService
     {
         try
         {
-            var client = _httpClientFactory.CreateClient();
+            var client = _httpClientFactory.CreateClient("ChatService");
             var response = await client.DeleteAsync($"{_serviceUrls.ChatService}/api/admin/rooms/{roomId}");
             if (response.IsSuccessStatusCode)
             {
-                Console.WriteLine($"[RoomManagementService] Room '{roomId}' deleted from ChatService");
+                _logger.LogInformation("[RoomManagementService] Room '{RoomId}' deleted from ChatService", roomId);
             }
             else
             {
-                Console.WriteLine($"[RoomManagementService] Failed to delete room from ChatService: {response.StatusCode}");
+                _logger.LogWarning("[RoomManagementService] Failed to delete room from ChatService: {StatusCode}", response.StatusCode);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[RoomManagementService] Error deleting room from ChatService: {ex.Message}");
+            _logger.LogError(ex, "[RoomManagementService] Error deleting room {RoomId} from ChatService", roomId);
             // Don't fail room deletion if sync fails - room is already soft-deleted in AdminService
         }
     }
@@ -236,6 +240,33 @@ public class RoomManagementService : IRoomManagementService
                 });
             }
         }
+    }
+
+    public async Task<IEnumerable<RoomMemberDto>> GetMembersAsync(Guid roomId)
+    {
+        var memberships = await _membershipRepository.GetByRoomIdAsync(roomId);
+        var activeUserIds = memberships.Where(m => m.IsActive).Select(m => m.UserId).ToHashSet();
+
+        if (activeUserIds.Count == 0) return Array.Empty<RoomMemberDto>();
+
+        try
+        {
+            var client = _httpClientFactory.CreateClient();
+            var users = await client.GetFromJsonAsync<List<AuthUserRecord>>($"{_serviceUrls.AuthService}/api/auth/users");
+            if (users != null)
+            {
+                return users
+                    .Where(u => activeUserIds.Contains(u.Id))
+                    .Select(u => new RoomMemberDto(u.Id, u.AnonymousName))
+                    .ToList();
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "[RoomManagementService] Error fetching users for room members mapping");
+        }
+        
+        return activeUserIds.Select(id => new RoomMemberDto(id, "Anonymous"));
     }
 
     public async Task<RoomStatsDto> GetRoomStatsAsync(Guid roomId)

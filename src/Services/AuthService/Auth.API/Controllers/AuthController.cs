@@ -6,6 +6,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using System.Security.Claims;
+using System.Security.Cryptography;
 
 namespace Auth.API.Controllers;
 
@@ -18,21 +19,25 @@ public class AuthController : ControllerBase
     private readonly IJwtTokenGenerator _jwtTokenGenerator;
     private readonly IConfiguration _configuration;
     private readonly ILogger<AuthController> _logger;
+    private readonly IWebHostEnvironment _env;
 
     public AuthController(
         AuthDbContext context,
         IPasswordHasher passwordHasher,
         IJwtTokenGenerator jwtTokenGenerator,
         IConfiguration configuration,
-        ILogger<AuthController> logger)
+        ILogger<AuthController> logger,
+        IWebHostEnvironment env)
     {
         _context = context;
         _passwordHasher = passwordHasher;
         _jwtTokenGenerator = jwtTokenGenerator;
         _configuration = configuration;
         _logger = logger;
+        _env = env;
     }
 
+    // ── Register (legacy direct endpoint) ────────────────────────────────────
     [HttpPost("register")]
     public async Task<IActionResult> Register(RegisterRequest request)
     {
@@ -42,14 +47,11 @@ public class AuthController : ControllerBase
         if (existingUser is not null)
         {
             if (existingUser.IsDeleted)
-            {
                 return BadRequest("This account has been permanently removed and cannot be recreated.");
-            }
             return BadRequest("User already exists.");
         }
 
-        var hashedPassword =
-            _passwordHasher.HashPassword(request.Password);
+        var hashedPassword = _passwordHasher.HashPassword(request.Password);
 
         var user = new User
         {
@@ -69,31 +71,183 @@ public class AuthController : ControllerBase
         };
 
         _context.Users.Add(user);
-
         _context.AnonymousProfiles.Add(anonymousProfile);
-
         await _context.SaveChangesAsync();
 
-        var token = _jwtTokenGenerator.GenerateToken(
+        var accessToken = _jwtTokenGenerator.GenerateToken(
             user.Id,
             user.Email,
             anonymousProfile.AnonymousName,
             new List<string>());
 
-        var response = new
+        var refreshToken = await CreateAndSaveRefreshTokenAsync(user.Id);
+        SetAuthCookies(accessToken, refreshToken);
+
+        return Ok(new
         {
-            Token = token,
             UserId = user.Id,
             Email = user.Email,
-            AnonymousName = anonymousProfile.AnonymousName
-        };
-
-        return Ok(response);
+            AnonymousName = anonymousProfile.AnonymousName,
+            Role = "user"
+        });
     }
+
+    // ── Login ─────────────────────────────────────────────────────────────────
+    [HttpPost("login")]
+    public async Task<IActionResult> Login(LoginRequest request)
+    {
+        var user = await _context.Users
+            .Include(u => u.Roles)
+            .FirstOrDefaultAsync(x => x.Email == request.Email);
+
+        if (user is null)
+            return Unauthorized("Invalid email or password.");
+
+        if (user.IsDeleted)
+            return Unauthorized("Your account has been permanently removed.");
+
+        var isPasswordValid = _passwordHasher.VerifyPassword(request.Password, user.PasswordHash);
+        if (!isPasswordValid)
+            return Unauthorized("Invalid email or password.");
+
+        var anonymousProfile = await _context.AnonymousProfiles
+            .FirstOrDefaultAsync(x => x.UserId == user.Id);
+
+        var anonName = anonymousProfile?.AnonymousName ?? "Anonymous";
+
+        // Bootstrap Admin role (idempotent)
+        var adminEmail = _configuration["AdminSettings:AdminEmail"];
+        if (!string.IsNullOrWhiteSpace(adminEmail) &&
+            string.Equals(user.Email, adminEmail, StringComparison.OrdinalIgnoreCase))
+        {
+            await EnsureAdminRoleAsync(user);
+        }
+
+        var roles = user.Roles.Select(r => r.Name).ToList();
+        var role = roles.Contains("Admin") ? "admin" : "user";
+
+        var accessToken = _jwtTokenGenerator.GenerateToken(user.Id, user.Email, anonName, roles);
+        var refreshToken = await CreateAndSaveRefreshTokenAsync(user.Id);
+        SetAuthCookies(accessToken, refreshToken);
+
+        return Ok(new
+        {
+            UserId = user.Id,
+            AnonymousName = anonName,
+            Email = user.Email,
+            Role = role
+        });
+    }
+
+    // ── Token Echo (for SignalR accessTokenFactory) ───────────────────────────
+    // Reads the HttpOnly access_token cookie and returns its raw JWT string.
+    // Used by the frontend SignalR hubs which cannot read HttpOnly cookies directly.
+    [AllowAnonymous]
+    [HttpGet("token")]
+    public IActionResult GetToken()
+    {
+        var token = Request.Cookies["access_token"];
+        if (string.IsNullOrEmpty(token))
+            return Unauthorized("No access token cookie found.");
+
+        return Content(token, "text/plain");
+    }
+
+    // ── Refresh Token ─────────────────────────────────────────────────────────
+    [AllowAnonymous]
+    [HttpPost("refresh")]
+    public async Task<IActionResult> Refresh()
+    {
+        var refreshTokenValue = Request.Cookies["refresh_token"];
+        if (string.IsNullOrEmpty(refreshTokenValue))
+        {
+            ClearAuthCookies();
+            return Unauthorized("No refresh token.");
+        }
+
+        var storedToken = await _context.RefreshTokens
+            .Include(t => t.User)
+            .ThenInclude(u => u.Roles)
+            .FirstOrDefaultAsync(t =>
+                t.Token == refreshTokenValue &&
+                !t.IsRevoked &&
+                t.ExpiryDate > DateTime.UtcNow);
+
+        if (storedToken is null)
+        {
+            // Token not found or expired — clear cookies, force re-login
+            ClearAuthCookies();
+            return Unauthorized("Refresh token is invalid or expired.");
+        }
+
+        var user = storedToken.User;
+
+        if (user.IsDeleted)
+        {
+            // Revoke token and clear
+            storedToken.IsRevoked = true;
+            await _context.SaveChangesAsync();
+            ClearAuthCookies();
+            return Unauthorized("Account has been removed.");
+        }
+
+        var anonymousProfile = await _context.AnonymousProfiles
+            .FirstOrDefaultAsync(x => x.UserId == user.Id);
+        var anonName = anonymousProfile?.AnonymousName ?? "Anonymous";
+
+        var roles = user.Roles.Select(r => r.Name).ToList();
+        var role = roles.Contains("Admin") ? "admin" : "user";
+
+        // ── Rotation: delete old token, issue new pair ──
+        _context.RefreshTokens.Remove(storedToken);
+
+        var newAccessToken = _jwtTokenGenerator.GenerateToken(user.Id, user.Email, anonName, roles);
+        var newRefreshToken = await CreateAndSaveRefreshTokenAsync(user.Id);
+
+        SetAuthCookies(newAccessToken, newRefreshToken);
+
+        _logger.LogInformation("Token refreshed for user {UserId}", user.Id);
+
+        return Ok(new
+        {
+            UserId = user.Id,
+            AnonymousName = anonName,
+            Email = user.Email,
+            Role = role
+        });
+    }
+
+    // ── Logout ────────────────────────────────────────────────────────────────
+    [AllowAnonymous]
+    [HttpPost("logout")]
+    public async Task<IActionResult> Logout()
+    {
+        var refreshTokenValue = Request.Cookies["refresh_token"];
+        if (!string.IsNullOrEmpty(refreshTokenValue))
+        {
+            var stored = await _context.RefreshTokens
+                .FirstOrDefaultAsync(t => t.Token == refreshTokenValue);
+
+            if (stored is not null)
+            {
+                _context.RefreshTokens.Remove(stored);
+                await _context.SaveChangesAsync();
+                _logger.LogInformation("Refresh token deleted on logout for user {UserId}", stored.UserId);
+            }
+        }
+
+        ClearAuthCookies();
+        return Ok(new { message = "Logged out successfully." });
+    }
+
+    // ── User Queries ──────────────────────────────────────────────────────────
+
+    [Authorize]
     [HttpGet("users/{id}")]
     public async Task<IActionResult> GetUser(Guid id)
     {
         var user = await _context.Users
+            .AsNoTracking()
             .Where(x => x.Id == id)
             .Select(x => new
             {
@@ -115,13 +269,14 @@ public class AuthController : ControllerBase
         return Ok(user);
     }
 
+    [Authorize]
     [HttpGet("users")]
     public async Task<IActionResult> GetUsers(
         [FromQuery] bool excludeAdmin = false,
         [FromQuery] bool excludeDeleted = false)
     {
         var adminEmail = _configuration["AdminSettings:AdminEmail"];
-        var query = _context.Users.AsQueryable();
+        var query = _context.Users.AsNoTracking().AsQueryable();
 
         if (excludeAdmin && !string.IsNullOrWhiteSpace(adminEmail))
             query = query.Where(u => u.Email != adminEmail);
@@ -147,15 +302,104 @@ public class AuthController : ControllerBase
         return Ok(users);
     }
 
-    [HttpGet("users/{id:guid}")]
+    [Authorize]
+    [HttpGet("users/paginated")]
+    public async Task<IActionResult> GetUsersPaginated([FromQuery] UserQueryParameters p)
+    {
+        var adminEmail = _configuration["AdminSettings:AdminEmail"];
+        
+        // Base query with AnonymousProfiles mapped inline
+        var query = _context.Users.AsNoTracking().Select(x => new
+        {
+            x.Id,
+            x.FullName, // Keep internally for search, don't expose if not needed
+            x.Email,     // Keep internally for search
+            x.Department,
+            x.Branch,
+            x.CreatedAt,
+            x.IsDeleted,
+            AnonymousName = _context.AnonymousProfiles
+                .Where(a => a.UserId == x.Id)
+                .Select(a => a.AnonymousName)
+                .FirstOrDefault() ?? "Anonymous",
+            x.DeletedAt,
+            x.DeletedBy
+        });
+
+        // 1. Exclude Admin
+        if (!string.IsNullOrWhiteSpace(adminEmail))
+            query = query.Where(u => u.Email != adminEmail);
+
+        // 2. Filter: Status
+        if (!string.IsNullOrWhiteSpace(p.Status) && !p.Status.Equals("All", StringComparison.OrdinalIgnoreCase))
+        {
+            if (p.Status.Equals("Active", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(u => !u.IsDeleted);
+            else if (p.Status.Equals("Deleted", StringComparison.OrdinalIgnoreCase))
+                query = query.Where(u => u.IsDeleted);
+        }
+
+        // 3. Filter: Department
+        if (!string.IsNullOrWhiteSpace(p.Department))
+            query = query.Where(u => u.Department == p.Department);
+
+        // 4. Filter: Branch
+        if (!string.IsNullOrWhiteSpace(p.Branch))
+            query = query.Where(u => u.Branch == p.Branch);
+
+        // 5. Search
+        if (!string.IsNullOrWhiteSpace(p.Search))
+        {
+            var s = p.Search.ToLower();
+            query = query.Where(u => 
+                u.AnonymousName.ToLower().Contains(s) || 
+                u.Email.ToLower().Contains(s) || 
+                u.FullName.ToLower().Contains(s));
+        }
+
+        // 6. Sorting
+        var sortBy = p.SortBy?.ToLower() ?? "";
+        query = sortBy switch
+        {
+            "joineddate" => p.SortDesc ? query.OrderByDescending(u => u.CreatedAt) : query.OrderBy(u => u.CreatedAt),
+            "name"       => p.SortDesc ? query.OrderByDescending(u => u.AnonymousName) : query.OrderBy(u => u.AnonymousName),
+            "email"      => p.SortDesc ? query.OrderByDescending(u => u.Email) : query.OrderBy(u => u.Email),
+            "department" => p.SortDesc ? query.OrderByDescending(u => u.Department) : query.OrderBy(u => u.Department),
+            "branch"     => p.SortDesc ? query.OrderByDescending(u => u.Branch) : query.OrderBy(u => u.Branch),
+            "status"     => p.SortDesc ? query.OrderByDescending(u => u.IsDeleted) : query.OrderBy(u => u.IsDeleted),
+            _            => query.OrderByDescending(u => u.CreatedAt) // Default sort
+        };
+
+        // 7. Total Count
+        var totalCount = await query.CountAsync();
+
+        // 8. Pagination
+        var items = await query
+            .Skip((p.Page - 1) * p.PageSize)
+            .Take(p.PageSize)
+            .ToListAsync();
+
+        return Ok(new PaginatedResult<object>
+        {
+            TotalCount = totalCount,
+            Page = p.Page,
+            PageSize = p.PageSize,
+            Items = items
+        });
+    }
+
+    // Note: Consolidated into GetUser above. GetUserById kept as a distinct route
+    // with a different URL pattern to resolve the routing ambiguity.
+    [HttpGet("users/profile/{id:guid}")]
     [AllowAnonymous]
     public async Task<IActionResult> GetUserById(Guid id)
     {
-        var user = await _context.Users.FindAsync(id);
+        var user = await _context.Users.AsNoTracking().FirstOrDefaultAsync(u => u.Id == id);
         if (user == null)
             return NotFound();
 
         var anonymousProfile = await _context.AnonymousProfiles
+            .AsNoTracking()
             .FirstOrDefaultAsync(a => a.UserId == id);
 
         return Ok(new
@@ -188,11 +432,12 @@ public class AuthController : ControllerBase
         });
     }
 
+    [Authorize]
     [HttpPatch("users/{id}/soft-delete")]
     public async Task<IActionResult> SoftDeleteUser(Guid id, [FromBody] SoftDeleteRequest request)
     {
         _logger.LogInformation("SOFT DELETE ENDPOINT HIT - UserId: {UserId}, AdminId: {AdminId}", id, request?.AdminId);
-        
+
         var user = await _context.Users.FindAsync(id);
         if (user == null)
         {
@@ -208,7 +453,7 @@ public class AuthController : ControllerBase
 
         user.IsDeleted = true;
         user.DeletedAt = DateTime.UtcNow;
-        user.DeletedBy = request.AdminId;
+        user.DeletedBy = request!.AdminId;
 
         await _context.SaveChangesAsync();
         _logger.LogInformation("SOFT DELETE - Successfully soft-deleted user {UserId}", id);
@@ -216,71 +461,9 @@ public class AuthController : ControllerBase
         return NoContent();
     }
 
-    [HttpPost("login")]
-    public async Task<IActionResult> Login(LoginRequest request)
-    {
-        // Load user WITH roles so they can be included in the JWT claim
-        var user = await _context.Users
-            .Include(u => u.Roles)
-            .FirstOrDefaultAsync(x => x.Email == request.Email);
-
-        if (user is null)
-        {
-            return Unauthorized("Invalid email or password.");
-        }
-
-        // Check if user is soft deleted
-        if (user.IsDeleted)
-        {
-            return Unauthorized("Your account has been permanently removed.");
-        }
-
-        var isPasswordValid =
-            _passwordHasher.VerifyPassword(
-                request.Password,
-                user.PasswordHash);
-
-        if (!isPasswordValid)
-        {
-            return Unauthorized("Invalid email or password.");
-        }
-
-        var anonymousProfile = await _context.AnonymousProfiles
-            .FirstOrDefaultAsync(x => x.UserId == user.Id);
-
-        var anonName = anonymousProfile?.AnonymousName ?? "Anonymous";
-
-        // Bootstrap Admin role when the configured admin email logs in.
-        // Idempotent: safe to call on every login — creates role/assignment only if missing.
-        // Regular users are completely unaffected.
-        var adminEmail = _configuration["AdminSettings:AdminEmail"];
-        if (!string.IsNullOrWhiteSpace(adminEmail) &&
-            string.Equals(user.Email, adminEmail, StringComparison.OrdinalIgnoreCase))
-        {
-            await EnsureAdminRoleAsync(user);
-        }
-
-        // Pass actual roles — empty list for regular users, ["Admin"] for admin
-        var roles = user.Roles.Select(r => r.Name).ToList();
-
-        var token = _jwtTokenGenerator.GenerateToken(
-            user.Id,
-            user.Email,
-            anonName,
-            roles);
-
-        var response = new
-        {
-            Token = token,
-            UserId = user.Id,
-            AnonymousName = anonName
-        };
-
-        return Ok(response);
-    }
     [Authorize]
     [HttpGet("me")]
-    public async Task<IActionResult> Me()
+    public async Task<IActionResult> GetMe()
     {
         var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier);
         if (!Guid.TryParse(userIdStr, out var userId))
@@ -293,24 +476,21 @@ public class AuthController : ControllerBase
         if (user is null)
             return NotFound();
 
-        var anonymousName = await _context.AnonymousProfiles
-            .Where(a => a.UserId == userId)
-            .Select(a => a.AnonymousName)
-            .FirstOrDefaultAsync() ?? "Anonymous";
+        var anonymousProfile = await _context.AnonymousProfiles
+            .FirstOrDefaultAsync(a => a.UserId == userId);
 
         return Ok(new
         {
-            userId        = user.Id,
-            email         = user.Email,
-            fullName      = user.FullName,
-            department    = user.Department,
-            branch        = user.Branch,
-            createdAt     = user.CreatedAt,
-            anonymousName = anonymousName,
-            roles         = user.Roles.Select(r => r.Name).ToList()
+            userId = user.Id,
+            email = user.Email,
+            fullName = user.FullName,
+            department = user.Department,
+            branch = user.Branch,
+            createdAt = user.CreatedAt,
+            anonymousName = anonymousProfile?.AnonymousName ?? "Anonymous",
+            roles = user.Roles.Select(r => r.Name).ToList()
         });
     }
-
 
     [Authorize]
     [HttpPatch("me")]
@@ -335,20 +515,86 @@ public class AuthController : ControllerBase
         return Ok(new
         {
             department = user.Department,
-            branch     = user.Branch
+            branch = user.Branch
         });
     }
 
-    /// <summary>
-    /// Ensures the "Admin" role exists in the database and is assigned to the given user.
-    /// Idempotent — creates the role and/or the assignment only if they do not already exist.
-    /// Never called for regular users — only triggered when AdminSettings:AdminEmail matches.
-    /// </summary>
+    // ── Cookie helpers ────────────────────────────────────────────────────────
+
+    private void SetAuthCookies(string accessToken, string refreshToken)
+    {
+        // Gateway is HTTPS, Frontend is HTTP -> Scheme mismatch means cross-site.
+        // Therefore, we MUST use SameSite=None and Secure=true for cookies to be sent via XHR.
+        Response.Cookies.Append("access_token", accessToken, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true, // Required for SameSite=None
+            SameSite = SameSiteMode.None,
+            Expires = DateTimeOffset.UtcNow.AddMinutes(
+                Convert.ToDouble(_configuration["JwtSettings:ExpiryMinutes"])),
+            Path = "/"
+        });
+
+        Response.Cookies.Append("refresh_token", refreshToken, new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true, // Required for SameSite=None
+            SameSite = SameSiteMode.None,
+            Expires = DateTimeOffset.UtcNow.AddDays(7),
+            Path = "/api/auth"
+        });
+    }
+
+    private void ClearAuthCookies()
+    {
+        Response.Cookies.Append("access_token", "", new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.None,
+            Expires = DateTimeOffset.UnixEpoch,
+            Path = "/"
+        });
+        Response.Cookies.Append("refresh_token", "", new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = true,
+            SameSite = SameSiteMode.None,
+            Expires = DateTimeOffset.UnixEpoch,
+            Path = "/api/auth"
+        });
+    }
+
+    // ── Refresh Token DB helpers ──────────────────────────────────────────────
+
+    private async Task<string> CreateAndSaveRefreshTokenAsync(Guid userId)
+    {
+        // Generate a cryptographically random token
+        var bytes = new byte[64];
+        using var rng = RandomNumberGenerator.Create();
+        rng.GetBytes(bytes);
+        var token = Convert.ToBase64String(bytes);
+
+        var refreshToken = new RefreshToken
+        {
+            Id = Guid.NewGuid(),
+            Token = token,
+            UserId = userId,
+            ExpiryDate = DateTime.UtcNow.AddDays(7),
+            IsRevoked = false
+        };
+
+        _context.RefreshTokens.Add(refreshToken);
+        await _context.SaveChangesAsync();
+
+        return token;
+    }
+
+    // ── Admin role bootstrap ──────────────────────────────────────────────────
+
     private async Task EnsureAdminRoleAsync(User user)
     {
-        // Step 1: Find or create the "Admin" role (no duplicate roles)
-        var adminRole = await _context.Roles
-            .FirstOrDefaultAsync(r => r.Name == "Admin");
+        var adminRole = await _context.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
 
         if (adminRole is null)
         {
@@ -356,22 +602,17 @@ public class AuthController : ControllerBase
             await _context.Roles.AddAsync(adminRole);
         }
 
-        // Step 2: Assign the role to this user if not already assigned
         if (!user.Roles.Any(r => r.Name == "Admin"))
-        {
             user.Roles.Add(adminRole);
-        }
 
-        // Single SaveChangesAsync covers both role creation and assignment
         await _context.SaveChangesAsync();
     }
 
-    /// <summary>
-    /// Generates a unique anonymous name in PascalCase Adjective+Animal format (e.g., SwiftFox).
-    /// Pool: 200 adjectives × 100 animals = 20,000 combinations.
-    /// Retries until a name not already in the database is found.
-    /// Throws if the pool is exhausted (safety guard — should never happen at current scale).
-    /// </summary>
+    // ── OTP / Forgot Password / Reset Password endpoints ─────────────────────
+    // (Delegated to other controllers/services — these remain untouched)
+
+    // ── Anonymous name generation ─────────────────────────────────────────────
+
     private async Task<string> GenerateUniqueAnonymousNameAsync()
     {
         var adjectives = new[]
@@ -419,30 +660,23 @@ public class AuthController : ControllerBase
             "Weasel", "Wolf", "Wolverine", "Wombat", "Yak", "Zebra"
         };
 
-        // Shuffle indices for random, non-repeating traversal
         var random = Random.Shared;
-        var adjectiveIndices = Enumerable.Range(0, adjectives.Length)
-            .OrderBy(_ => random.Next()).ToArray();
-        var animalIndices = Enumerable.Range(0, animals.Length)
-            .OrderBy(_ => random.Next()).ToArray();
+        var adjectiveIndices = Enumerable.Range(0, adjectives.Length).OrderBy(_ => random.Next()).ToArray();
+        var animalIndices = Enumerable.Range(0, animals.Length).OrderBy(_ => random.Next()).ToArray();
 
         foreach (var ai in adjectiveIndices)
         {
             foreach (var ni in animalIndices)
             {
                 var candidate = adjectives[ai] + animals[ni];
-                var exists = await _context.AnonymousProfiles
-                    .AnyAsync(x => x.AnonymousName == candidate);
-
+                var exists = await _context.AnonymousProfiles.AnyAsync(x => x.AnonymousName == candidate);
                 if (!exists)
                     return candidate;
             }
         }
 
-        // Pool exhausted — should never happen at current scale (20,000 combinations)
         throw new InvalidOperationException(
             "Anonymous name pool exhausted. All 20,000 combinations are taken. " +
             "Please expand the adjective or animal lists.");
     }
 }
-

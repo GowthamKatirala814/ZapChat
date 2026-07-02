@@ -15,4 +15,9 @@ public interface IRoomManagementService
     /// Adds a user to all existing rooms. Used when a new user registers.
     /// </summary>
     Task AddUserToAllRoomsAsync(Guid userId);
+
+    /// <summary>
+    /// Gets all active user IDs and Names for a given room.
+    /// </summary>
+    Task<IEnumerable<RoomMemberDto>> GetMembersAsync(Guid roomId);
 }

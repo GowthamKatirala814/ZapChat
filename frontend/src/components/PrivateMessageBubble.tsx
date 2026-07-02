@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { PrivateMessage } from "../types/PrivateMessage";
 import { getAnonymousName } from "../utils/auth";
-import { Reply, SmilePlus, Flag, Trash2 } from "lucide-react";
+import { Reply, SmilePlus, Flag, Trash2, Pencil, Check, CheckCheck, X } from "lucide-react";
 import ReportMessageModal from "./ReportMessageModal";
 
 const EMOJI_LIST = ["👍", "❤️", "😂", "🔥", "🎉"];
@@ -33,19 +33,40 @@ function groupReactions(reactions: PrivateMessage["reactions"]) {
     return Array.from(map.entries()).map(([emoji, names]) => ({ emoji, names, count: names.length }));
 }
 
-interface Props {
-    message: PrivateMessage;
-    onReply?: () => void;
-    onReact?: (emoji: string) => void;
-    onDelete?: () => void;
-}
+const renderMentionContent = (text: string) => {
+    if (!text) return null;
+    const parts = text.split(/(@\w+)/g);
+    return parts.map((part, i) => {
+        if (part.startsWith("@")) {
+            return <span key={i} className="font-bold text-sky-700 bg-sky-200/50 px-1 rounded-sm">{part}</span>;
+        }
+        return <span key={i}>{part}</span>;
+    });
+};
 
-export default function PrivateMessageBubble({ message, onReply, onReact, onDelete }: Props) {
+type Props = {
+    message: PrivateMessage;
+    onReply: () => void;
+    onReact: (emoji: string) => void;
+    onDelete?: () => void;
+    onEdit?: (newContent: string) => void;
+};
+
+export default function PrivateMessageBubble({ message, onReply, onReact, onDelete, onEdit }: Props) {
     const [showPicker, setShowPicker] = useState(false);
     const [showReport, setShowReport] = useState(false);
     const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [editContent, setEditContent] = useState(message.content ?? "");
     const myName = getAnonymousName();
     const isMe = message.senderName === myName;
+
+    // A message is editable if it is from me, not deleted, and sent within the last 15 minutes.
+    const canEdit = isMe
+        && !message.isDeleted
+        && !message.deletedBy
+        && !!message.sentAt
+        && (Date.now() - new Date(message.sentAt).getTime()) < 15 * 60 * 1000;
 
     const canDelete = isMe
         && !message.isDeleted
@@ -92,17 +113,18 @@ export default function PrivateMessageBubble({ message, onReply, onReact, onDele
                         mb-1 px-3 py-1.5 rounded-lg
                         bg-sky-50 border-l-2 border-sky-300
                         text-xs text-slate-500 max-w-full truncate">
-                        ↩ Replying to a message
+                        <span className="font-semibold text-sky-600 mr-1">
+                            {message.parentMessageSenderName ?? "Someone"}
+                        </span>
+                        {message.parentMessageSnippet ?? "↩ Replying to a message"}
                     </div>
                 )}
 
-                {message.isDeleted ? (
-                    <div className="px-4 py-2.5 rounded-2xl text-sm italic"
-                        style={{
-                            background: isMe ? '#DBEAFE' : '#F1F5F9',
-                            color: '#94A3B8'
-                        }}>
-                    {isMe ? "You deleted this message" : "Message removed by moderation."}
+                {(message.deletedBy || message.isDeleted) ? (
+                    <div className="text-sm italic text-slate-400 mt-1 flex items-center gap-1.5">
+                        {message.deletedBy === "Moderation"
+                            ? "🛡️ Message removed by moderation."
+                            : (isMe ? "🗑️ You deleted this message." : "🗑️ This message was deleted by the user.")}
                     </div>
                 ) : (
                     <div className="relative flex items-end gap-1">
@@ -172,8 +194,57 @@ export default function PrivateMessageBubble({ message, onReply, onReact, onDele
                                 ? "bg-sky-500 text-white rounded-br-sm shadow-sm"
                                 : "bg-white text-slate-800 rounded-bl-sm shadow-sm border border-slate-200"
                             }`}>
-                            {message.content}
+                            {isEditing ? (
+                                <div className="flex items-center gap-2 w-full">
+                                    <input 
+                                        type="text" 
+                                        value={editContent}
+                                        onChange={e => setEditContent(e.target.value)}
+                                        onKeyDown={e => {
+                                            if (e.key === "Enter") {
+                                                if (editContent.trim() && editContent.trim() !== message.content) {
+                                                    onEdit?.(editContent.trim());
+                                                }
+                                                setIsEditing(false);
+                                            } else if (e.key === "Escape") {
+                                                setIsEditing(false);
+                                                setEditContent(message.content ?? "");
+                                            }
+                                        }}
+                                        className={`flex-1 bg-transparent border-b outline-none px-1 py-0.5 ${isMe ? "border-white/50 text-white placeholder-white/50" : "border-slate-300 text-slate-800"}`}
+                                        autoFocus
+                                    />
+                                    <button onClick={() => {
+                                        if (editContent.trim() && editContent.trim() !== message.content) {
+                                            onEdit?.(editContent.trim());
+                                        }
+                                        setIsEditing(false);
+                                    }} className="hover:opacity-75"><Check size={16} /></button>
+                                    <button onClick={() => {
+                                        setIsEditing(false);
+                                        setEditContent(message.content ?? "");
+                                    }} className="hover:opacity-75"><X size={16} /></button>
+                                </div>
+                            ) : (
+                                <>
+                                    {renderMentionContent(message.content ?? "")}
+                                    {message.isEdited && (
+                                        <span className={`text-[10px] ml-1.5 opacity-70 ${isMe ? "text-sky-100" : "text-slate-400"}`}>(edited)</span>
+                                    )}
+                                </>
+                            )}
                         </div>
+
+                        {/* Read Receipts for My Messages */}
+                        {isMe && !message.isDeleted && !message.deletedBy && (
+                            <div className="absolute -bottom-4 right-1 text-[10px] flex items-center justify-end w-10">
+                                {message.isRead ? (
+                                    <CheckCheck size={14} className="text-blue-500" />
+                                ) : (
+                                    <CheckCheck size={14} className="text-slate-400" />
+                                )}
+                            </div>
+                        )}
 
                         {/* My message action buttons */}
                         {isMe && (
@@ -198,6 +269,20 @@ export default function PrivateMessageBubble({ message, onReply, onReact, onDele
                                             hover:text-slate-700 hover:bg-slate-100
                                             transition-colors">
                                         <Reply size={14} />
+                                    </button>
+                                )}
+                                {canEdit && !isEditing && (
+                                    <button
+                                        onClick={() => {
+                                            setIsEditing(true);
+                                            setEditContent(message.content ?? "");
+                                        }}
+                                        title="Edit"
+                                        className="
+                                            p-1 rounded-lg text-slate-400
+                                            hover:text-sky-600 hover:bg-sky-50
+                                            transition-colors">
+                                        <Pencil size={14} />
                                     </button>
                                 )}
                                 {canDelete && (
@@ -235,7 +320,7 @@ export default function PrivateMessageBubble({ message, onReply, onReact, onDele
                 )}
 
                 {/* Reactions row */}
-                {reactionGroups.length > 0 && !message.isDeleted && (
+                {reactionGroups.length > 0 && !(message.deletedBy || message.isDeleted) && (
                     <div className="flex flex-wrap gap-1 mt-1">
                         {reactionGroups.map(({ emoji, count, names }) => {
                             const iReacted = names.includes(myName);

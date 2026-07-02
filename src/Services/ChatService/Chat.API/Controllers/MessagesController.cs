@@ -17,21 +17,28 @@ public class MessagesController : ControllerBase
     private readonly ChatDbContext _context;
     private readonly IHttpClientFactory _httpClientFactory;
     private readonly IConfiguration _configuration;
+    private readonly ILogger<MessagesController> _logger;
 
-    public MessagesController(ChatDbContext context, IHttpClientFactory httpClientFactory, IConfiguration configuration)
+    public MessagesController(
+        ChatDbContext context,
+        IHttpClientFactory httpClientFactory,
+        IConfiguration configuration,
+        ILogger<MessagesController> logger)
     {
         _context = context;
         _httpClientFactory = httpClientFactory;
         _configuration = configuration;
+        _logger = logger;
     }
 
+    [Authorize]
     [HttpPost("report")]
     public async Task<IActionResult> ReportMessage(ReportMessageRequest request)
     {
         if (string.IsNullOrWhiteSpace(request.Reason))
             return BadRequest("Reason is required.");
 
-        var message = await _context.Messages.FindAsync(request.MessageId);
+        var message = await _context.Messages.AsNoTracking().FirstOrDefaultAsync(m => m.Id == request.MessageId);
         if (message == null)
             return NotFound("Message not found.");
 
@@ -39,8 +46,9 @@ public class MessagesController : ControllerBase
         if (string.IsNullOrEmpty(adminUrl))
             return StatusCode(500, "AdminService URL is not configured.");
 
-        var client = _httpClientFactory.CreateClient();
-        
+        // Use named client with pre-configured base address and timeout
+        var client = _httpClientFactory.CreateClient("AdminService");
+
         var payload = new
         {
             MessageId = request.MessageId,
@@ -53,19 +61,15 @@ public class MessagesController : ControllerBase
 
         var response = await client.PostAsync($"{adminUrl}/api/reports", content);
 
-        Console.WriteLine("=== ADMIN SERVICE HTTP POST VERIFICATION ===");
-        Console.WriteLine($"Original Request URL: {adminUrl}/api/reports");
-        Console.WriteLine($"Original Request Method: POST");
-        Console.WriteLine($"Response StatusCode: {(int)response.StatusCode} {response.StatusCode}");
-        if (response.RequestMessage != null)
-        {
-            Console.WriteLine($"Final URL Reached: {response.RequestMessage.RequestUri}");
-            Console.WriteLine($"Final Method Used: {response.RequestMessage.Method}");
-        }
+        _logger.LogInformation(
+            "[MessagesController] Report forwarded to AdminService. MessageId={MessageId}, Status={StatusCode}",
+            request.MessageId, response.StatusCode);
 
         if (!response.IsSuccessStatusCode)
         {
-            // Log failure or handle retry if needed, but for now just pass the error
+            _logger.LogWarning(
+                "[MessagesController] AdminService returned error for report. MessageId={MessageId}, Status={StatusCode}",
+                request.MessageId, (int)response.StatusCode);
             return StatusCode((int)response.StatusCode, "Failed to forward report to Admin Service.");
         }
 
@@ -119,6 +123,7 @@ public class MessagesController : ControllerBase
 
         message.IsDeleted = true;
         message.DeletedAt = DateTime.UtcNow;
+        message.DeletedBy = "User";
         await _context.SaveChangesAsync();
 
         if (message.ChatRoom != null)
@@ -128,7 +133,8 @@ public class MessagesController : ControllerBase
                 .SendAsync("MessageDeleted", new
                 {
                     messageId = id,
-                    deletedAt = message.DeletedAt
+                    deletedAt = message.DeletedAt,
+                    deletedBy = "User"
                 });
         }
 

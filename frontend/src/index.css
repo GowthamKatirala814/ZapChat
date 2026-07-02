@@ -1,5 +1,75 @@
 @import "tailwindcss";
 
+/* ── Theme CSS variables ────────────────────────────────────────────────────── */
+
+:root.dark, :root:not(.light) {
+    /* Dark mode — Deep Navy + Cyan */
+    --bg-base:        #020617;
+    --bg-surface:     #0f172a;
+    --bg-elevated:    #1e293b;
+    --bg-hover:       rgba(255,255,255,0.05);
+    --bg-active:      rgba(6,182,212,0.15);
+
+    --border-default: rgba(255,255,255,0.07);
+    --border-subtle:  rgba(255,255,255,0.04);
+
+    --text-primary:   #f1f5f9;
+    --text-secondary: #94a3b8;
+    --text-muted:     #475569;
+    --text-accent:    #06b6d4;
+
+    --sidebar-bg:     #020617;
+    --topnav-bg:      #0f172a;
+    --topnav-border:  rgba(255,255,255,0.07);
+    --topnav-text:    #f1f5f9;
+    --topnav-icon:    #94a3b8;
+
+    --chat-bg:        #0f172a;
+    --input-bg:       rgba(255,255,255,0.05);
+    --input-border:   rgba(255,255,255,0.1);
+    --input-text:     #f1f5f9;
+
+    --btn-primary:    linear-gradient(135deg, #0ea5e9, #06b6d4);
+    --btn-primary-shadow: 0 8px 24px rgba(6,182,212,0.3);
+    --accent:         #06b6d4;
+    --accent-hover:   #22d3ee;
+    --admin-sidebar:  rgba(2,6,23,0.98);
+}
+
+:root.light {
+    /* Light mode — White + Sky Blue */
+    --bg-base:        #f0f9ff;
+    --bg-surface:     #ffffff;
+    --bg-elevated:    #f8fafc;
+    --bg-hover:       rgba(14,165,233,0.06);
+    --bg-active:      rgba(14,165,233,0.12);
+
+    --border-default: #e2e8f0;
+    --border-subtle:  #f1f5f9;
+
+    --text-primary:   #0f172a;
+    --text-secondary: #475569;
+    --text-muted:     #94a3b8;
+    --text-accent:    #0284c7;
+
+    --sidebar-bg:     #0f172a;
+    --topnav-bg:      #ffffff;
+    --topnav-border:  #e2e8f0;
+    --topnav-text:    #0f172a;
+    --topnav-icon:    #64748b;
+
+    --chat-bg:        #f0f9ff;
+    --input-bg:       #ffffff;
+    --input-border:   #e2e8f0;
+    --input-text:     #0f172a;
+
+    --btn-primary:    linear-gradient(135deg, #0ea5e9, #38bdf8);
+    --btn-primary-shadow: 0 8px 24px rgba(14,165,233,0.25);
+    --accent:         #0ea5e9;
+    --accent-hover:   #0284c7;
+    --admin-sidebar:  #0f172a;
+}
+
 html,
 body,
 #root {
@@ -10,5 +80,27 @@ body,
 }
 
 body {
-    background: #020617;
+    background: var(--bg-base);
+    color: var(--text-primary);
+    transition: background 0.2s ease, color 0.2s ease;
 }
+
+/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
+::-webkit-scrollbar { width: 4px; height: 4px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.5); }
+
+/* ── Mobile drawer backdrop ─────────────────────────────────────────────────── */
+.drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.5);
+    backdrop-filter: blur(2px);
+    z-index: 40;
+}
+
+/* ── Smooth transitions ─────────────────────────────────────────────────────── */
+.sidebar-drawer {
+    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
+}

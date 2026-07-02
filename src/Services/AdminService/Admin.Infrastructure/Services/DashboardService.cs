@@ -2,6 +2,8 @@ using System.Net.Http.Json;
 using Admin.Application.DTOs;
 using Admin.Application.Interfaces;
 using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Logging;
 using Admin.Infrastructure.Configuration;
 
 namespace Admin.Infrastructure.Services;
@@ -14,6 +16,8 @@ public class DashboardService : IDashboardService
     private readonly IReportRepository _reportRepository;
     private readonly IAuditLogRepository _auditLogRepository;
     private readonly ServiceUrlsOptions _serviceUrls;
+    private readonly IMemoryCache _cache;
+    private readonly ILogger<DashboardService> _logger;
 
     public DashboardService(
         IHttpClientFactory httpClientFactory,
@@ -21,7 +25,9 @@ public class DashboardService : IDashboardService
         IRoomManagementRepository roomManagementRepository,
         IReportRepository reportRepository,
         IAuditLogRepository auditLogRepository,
-        IOptions<ServiceUrlsOptions> serviceUrls)
+        IOptions<ServiceUrlsOptions> serviceUrls,
+        IMemoryCache cache,
+        ILogger<DashboardService> logger)
     {
         _httpClientFactory = httpClientFactory;
         _blockedUserRepository = blockedUserRepository;
@@ -29,6 +35,8 @@ public class DashboardService : IDashboardService
         _reportRepository = reportRepository;
         _auditLogRepository = auditLogRepository;
         _serviceUrls = serviceUrls.Value;
+        _cache = cache;
+        _logger = logger;
     }
 
     public async Task<DashboardStatsDto> GetStatsAsync()
@@ -75,18 +83,22 @@ public class DashboardService : IDashboardService
 
     private async Task<(int totalUsers, int activeUsers, int deletedUsers, int blockedUsers)> GetUserStatsAsync()
     {
+        const string cacheKey = "dashboard_user_stats";
+        if (_cache.TryGetValue(cacheKey, out (int t, int a, int d, int b) cached))
+            return cached;
+
         try
         {
-            var client = _httpClientFactory.CreateClient();
+            var client = _httpClientFactory.CreateClient("AuthService");
             // excludeAdmin=true ensures the administrator account is never counted
             // in any user statistic — admin is a system account, not a platform user.
             var response = await client.GetAsync($"{_serviceUrls.AuthService}/api/auth/users?excludeAdmin=true");
-            Console.WriteLine($"[DashboardService] Auth API response status: {response.StatusCode}");
+            _logger.LogInformation("[DashboardService] Auth API response status: {StatusCode}", response.StatusCode);
 
             if (response.IsSuccessStatusCode)
             {
                 var users = await response.Content.ReadFromJsonAsync<List<AuthUserRecord>>();
-                Console.WriteLine($"[DashboardService] Users fetched (admin excluded): {users?.Count ?? 0}");
+                _logger.LogInformation("[DashboardService] Users fetched (admin excluded): {Count}", users?.Count ?? 0);
 
                 if (users != null)
                 {
@@ -94,7 +106,7 @@ public class DashboardService : IDashboardService
                     var blockedUsersList = await _blockedUserRepository.GetAllAsync();
                     var blockedUserIds = blockedUsersList.Select(b => b.UserId).ToHashSet();
 
-                    Console.WriteLine($"[DashboardService] Blocked users count: {blockedUserIds.Count}");
+                    _logger.LogDebug("[DashboardService] Blocked users count: {Count}", blockedUserIds.Count);
 
                     // TotalUsers  = all non-admin accounts (active + deleted)
                     // ActiveUsers = non-deleted (blocked are a subset of active — they can't log in but are not erased)
@@ -104,19 +116,23 @@ public class DashboardService : IDashboardService
                     var deletedUsers = users.Count(u => u.IsDeleted);
                     var blockedUsers = blockedUserIds.Count;
 
-                    Console.WriteLine($"[DashboardService] Calculated: Total={totalUsers}, Active={activeUsers}, Deleted={deletedUsers}, Blocked={blockedUsers}");
-                    return (totalUsers, activeUsers, deletedUsers, blockedUsers);
+                    _logger.LogDebug("[DashboardService] Stats: Total={Total}, Active={Active}, Deleted={Deleted}, Blocked={Blocked}",
+                        totalUsers, activeUsers, deletedUsers, blockedUsers);
+
+                    var result = (totalUsers, activeUsers, deletedUsers, blockedUsers);
+                    _cache.Set(cacheKey, result, TimeSpan.FromSeconds(30));
+                    return result;
                 }
             }
             else
             {
                 var error = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"[DashboardService] Auth API error: {error}");
+                _logger.LogWarning("[DashboardService] Auth API error: {Error}", error);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DashboardService] Exception in GetUserStatsAsync: {ex.Message}");
+            _logger.LogError(ex, "[DashboardService] Exception in GetUserStatsAsync");
         }
         return (0, 0, 0, 0);
     }
@@ -133,30 +149,36 @@ public class DashboardService : IDashboardService
     /// </summary>
     private async Task<int> GetTotalRoomsAsync()
     {
+        const string cacheKey = "dashboard_room_count";
+        if (_cache.TryGetValue(cacheKey, out int cachedCount))
+            return cachedCount;
+
         try
         {
-            var client = _httpClientFactory.CreateClient();
+            var client = _httpClientFactory.CreateClient("ChatService");
             var url = $"{_serviceUrls.ChatService}/api/admin/rooms";
-            Console.WriteLine($"[DashboardService] Fetching rooms from: {url}");
+            _logger.LogInformation("[DashboardService] Fetching rooms from: {Url}", url);
 
             var response = await client.GetAsync(url);
-            Console.WriteLine($"[DashboardService] Room API response status: {response.StatusCode}");
+            _logger.LogInformation("[DashboardService] Room API response status: {StatusCode}", response.StatusCode);
 
             if (response.IsSuccessStatusCode)
             {
                 var rooms = await response.Content.ReadFromJsonAsync<List<ChatRoomRecord>>();
-                Console.WriteLine($"[DashboardService] Rooms fetched: {rooms?.Count ?? 0}");
-                return rooms?.Count ?? 0;
+                var count = rooms?.Count ?? 0;
+                _logger.LogDebug("[DashboardService] Rooms fetched: {Count}", count);
+                _cache.Set(cacheKey, count, TimeSpan.FromSeconds(30));
+                return count;
             }
             else
             {
                 var error = await response.Content.ReadAsStringAsync();
-                Console.WriteLine($"[DashboardService] Room API error: {error}");
+                _logger.LogWarning("[DashboardService] Room API error: {Error}", error);
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[DashboardService] Error fetching rooms: {ex.Message}");
+            _logger.LogError(ex, "[DashboardService] Error fetching rooms");
         }
         return 0;
     }

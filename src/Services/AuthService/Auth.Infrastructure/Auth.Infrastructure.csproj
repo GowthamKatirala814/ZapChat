@@ -33,6 +33,8 @@
 
 		<PackageReference Include="Microsoft.Extensions.Http" Version="8.0.0" />
 
+		<PackageReference Include="Polly" Version="8.7.0" />
+
 		<PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="7.5.1" />
 
 	</ItemGroup>

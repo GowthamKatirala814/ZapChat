@@ -9,10 +9,12 @@ namespace Notification.API.Hubs;
 public class NotificationHub : Hub
 {
     private readonly NotificationDbContext _context;
+    private readonly ILogger<NotificationHub> _logger;
 
-    public NotificationHub(NotificationDbContext context)
+    public NotificationHub(NotificationDbContext context, ILogger<NotificationHub> logger)
     {
         _context = context;
+        _logger = logger;
     }
 
     // Called by other services via IHubContext — persists + pushes to specific user
@@ -48,18 +50,15 @@ public class NotificationHub : Hub
 
     public override async Task OnConnectedAsync()
     {
-        var userId = Context.UserIdentifier;
-        Console.WriteLine(
-            $"[NotificationHub] User connected: {userId}");
+        _logger.LogInformation("[NotificationHub] User connected: {UserId}", Context.UserIdentifier);
         await base.OnConnectedAsync();
     }
 
-    public override async Task OnDisconnectedAsync(
-        Exception? exception)
+    public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        var userId = Context.UserIdentifier;
-        Console.WriteLine(
-            $"[NotificationHub] User disconnected: {userId}");
+        _logger.LogInformation("[NotificationHub] User disconnected: {UserId}", Context.UserIdentifier);
+        if (exception is not null)
+            _logger.LogError(exception, "[NotificationHub] Disconnection error for user {UserId}", Context.UserIdentifier);
         await base.OnDisconnectedAsync(exception);
     }
 }

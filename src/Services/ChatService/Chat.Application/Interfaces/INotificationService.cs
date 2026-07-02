@@ -5,5 +5,6 @@ public interface INotificationService
     Task CreateNotification(
         Guid userId,
         string title,
-        string message);
+        string message,
+        string type = "Message");
 }

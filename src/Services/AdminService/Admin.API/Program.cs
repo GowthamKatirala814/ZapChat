@@ -4,11 +4,14 @@ using Admin.Infrastructure.Persistence.DbContexts;
 using Admin.Infrastructure.Repositories;
 using Admin.Infrastructure.Services;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.OpenApi.Models;
+using System.Net.Mime;
 using System.Text;
+using System.Text.Json;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -16,14 +19,23 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 
+// ─── ProblemDetails (RFC 7807) ───────────────────────────────────────────────
+builder.Services.AddProblemDetails();
+
+// ─── Response Compression ────────────────────────────────────────────────────
+builder.Services.AddResponseCompression(opts => opts.EnableForHttps = true);
+
+// ─── Memory Cache ────────────────────────────────────────────────────────────
+builder.Services.AddMemoryCache();
+
 // ─── Swagger with Bearer Auth ────────────────────────────────────────────────
 builder.Services.AddSwaggerGen(options =>
 {
     options.SwaggerDoc("v1", new OpenApiInfo
     {
-        Title = "Admin.API — ZapPulse Admin Service",
+        Title = "Admin.API — ZapChat Admin Service",
         Version = "v1",
-        Description = "Admin Service for ZapPulse: Dashboard, User Management, Moderation, " +
+        Description = "Admin Service for ZapChat: Dashboard, User Management, Moderation, " +
                       "Room Management, Analytics, and Audit Logs."
     });
 
@@ -99,6 +111,9 @@ builder.Services.AddDbContext<AdminDbContext>(options =>
     options.UseSqlServer(builder.Configuration.GetConnectionString("DefaultConnection")));
 
 // ─── HTTP Clients (IHttpClientFactory) ───────────────────────────────────────
+builder.Services.AddHttpContextAccessor();
+builder.Services.AddTransient<Admin.API.Infrastructure.Configuration.AuthHeaderHandler>();
+
 // Named client for Auth Service. BaseAddress resolved at runtime from IOptions<ServiceUrlsOptions>.
 // Never hardcoded — change the URL in appsettings.json.
 builder.Services.AddHttpClient("AuthService", (serviceProvider, client) =>
@@ -106,7 +121,7 @@ builder.Services.AddHttpClient("AuthService", (serviceProvider, client) =>
     var opts = serviceProvider.GetRequiredService<IOptions<ServiceUrlsOptions>>().Value;
     if (!string.IsNullOrWhiteSpace(opts.AuthService))
         client.BaseAddress = new Uri(opts.AuthService.TrimEnd('/') + "/");
-});
+}).AddHttpMessageHandler<Admin.API.Infrastructure.Configuration.AuthHeaderHandler>();
 
 builder.Services.AddHttpClient("ChatService", (serviceProvider, client) =>
 {
@@ -171,12 +186,32 @@ builder.Services.AddAuthorization(options =>
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("AllowFrontend", policy =>
-        policy.WithOrigins("http://localhost:5173")
+    {
+        var allowedOrigins = builder.Configuration["AllowedOrigins"]
+            ?.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            ?? [];
+        policy.WithOrigins(allowedOrigins)
               .AllowAnyHeader()
-              .AllowAnyMethod());
+              .AllowAnyMethod();
+    });
 });
 
 var app = builder.Build();
+
+// ─── Global Exception Handler ─────────────────────────────────────────────────
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = MediaTypeNames.Application.Json;
+        var feature = context.Features.Get<IExceptionHandlerPathFeature>();
+        var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+        logger.LogError(feature?.Error, "Unhandled exception on {Path}", feature?.Path);
+        var problem = new { status = 500, title = "An unexpected error occurred.", traceId = context.TraceIdentifier };
+        await context.Response.WriteAsync(JsonSerializer.Serialize(problem));
+    });
+});
 
 // ─── Pipeline ─────────────────────────────────────────────────────────────────
 if (app.Environment.IsDevelopment())
@@ -191,9 +226,13 @@ if (app.Environment.IsDevelopment())
 
 // CORS must be before HTTPS redirection to ensure headers are preserved
 app.UseCors("AllowFrontend");
-app.UseHttpsRedirection();
+app.UseResponseCompression();
+
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+
+// Lightweight health endpoint for gateway health checks
+app.MapGet("/health", () => Results.Ok(new { status = "healthy", service = "Admin" }));
 
 app.Run();

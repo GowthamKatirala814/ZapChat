@@ -22,6 +22,10 @@ public class AuthDbContext : DbContext
 
     public DbSet<RegistrationOtp> RegistrationOtps => Set<RegistrationOtp>();
 
+    public DbSet<GeminiUsage> GeminiUsages => Set<GeminiUsage>();
+    
+    public DbSet<AiHealthEvent> AiHealthEvents => Set<AiHealthEvent>();
+
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         base.OnModelCreating(modelBuilder);
@@ -80,5 +84,28 @@ public class AuthDbContext : DbContext
         modelBuilder.Entity<RegistrationOtp>()
             .Property(x => x.FullName)
             .HasMaxLength(200);
+
+        // ── Performance indexes ───────────────────────────────────────────────
+        // RefreshToken.Token — looked up on every /refresh and /logout call
+        modelBuilder.Entity<RefreshToken>()
+            .HasIndex(x => x.Token)
+            .IsUnique();
+
+        // RefreshToken.UserId — used when revoking all tokens for a user
+        modelBuilder.Entity<RefreshToken>()
+            .HasIndex(x => x.UserId);
+
+        // User.IsDeleted — filtered on almost every user query
+        modelBuilder.Entity<User>()
+            .HasIndex(x => x.IsDeleted);
+
+        // User.CreatedAt — used in analytics ordering
+        modelBuilder.Entity<User>()
+            .HasIndex(x => x.CreatedAt);
+
+        // GeminiUsage.Date — one tracker per day
+        modelBuilder.Entity<GeminiUsage>()
+            .HasIndex(x => x.Date)
+            .IsUnique();
     }
-}
+}

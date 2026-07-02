@@ -8,4 +8,5 @@ public interface IUserManagementService
     Task<IEnumerable<AdminUserDto>> SearchUsersAsync(string query);
     Task<AdminUserDto?> GetUserByIdAsync(Guid userId);
     Task DeleteUserAsync(Guid userId, string reason, Guid adminId);
+    Task<PaginatedResult<AdminUserDto>> GetUsersPaginatedAsync(UserQueryParameters parameters);
 }

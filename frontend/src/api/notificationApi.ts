@@ -27,3 +27,18 @@ export const deleteNotification = async (id: string): Promise<void> => {
         `/api/notification/${id}`
     );
 };
+
+export interface PushSubscriptionRequest {
+    userId: string;
+    endpoint: string;
+    p256dh: string;
+    auth: string;
+}
+
+export const subscribeToPush = async (request: PushSubscriptionRequest): Promise<void> => {
+    await notificationApiClient.post('/api/notification/subscribe', request);
+};
+
+export const unsubscribeFromPush = async (request: PushSubscriptionRequest): Promise<void> => {
+    await notificationApiClient.post('/api/notification/unsubscribe', request);
+};

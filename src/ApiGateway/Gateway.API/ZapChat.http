@@ -1,6 +1,0 @@
-@ZapChat_HostAddress = http://localhost:5048
-
-GET {{ZapChat_HostAddress}}/weatherforecast/
-Accept: application/json
-
-###

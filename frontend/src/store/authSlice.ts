@@ -1,7 +1,10 @@
 import { createSlice, type PayloadAction } from "@reduxjs/toolkit";
 
+// Token is NO LONGER stored in Redux or localStorage.
+// It lives exclusively in an HttpOnly cookie set by the Auth Service.
+// Only non-sensitive profile data is kept in Redux (and localStorage for page-refresh persistence).
+
 export interface AuthPayload {
-    token: string;
     userId?: string;
     anonymousName?: string;
     email?: string;
@@ -9,7 +12,6 @@ export interface AuthPayload {
 }
 
 interface AuthState {
-    token: string | null;
     userId: string | null;
     anonymousName: string | null;
     email: string | null;
@@ -18,12 +20,15 @@ interface AuthState {
 }
 
 const initialState: AuthState = {
-    token: localStorage.getItem("token"),
+    // Rehydrate from localStorage on page refresh.
+    // If userId is present, the user was previously logged in.
+    // The first authenticated API call will verify the cookie is still valid.
+    // If the cookie has expired, the 401 → refresh → logout flow handles it.
     userId: localStorage.getItem("userId"),
     anonymousName: localStorage.getItem("anonymousName"),
     email: localStorage.getItem("email"),
     role: (localStorage.getItem("role") as "user" | "admin" | null),
-    isAuthenticated: !!localStorage.getItem("token"),
+    isAuthenticated: !!localStorage.getItem("userId"),
 };
 
 const authSlice = createSlice({
@@ -31,15 +36,14 @@ const authSlice = createSlice({
     initialState,
     reducers: {
         loginSuccess: (state, action: PayloadAction<AuthPayload>) => {
-            const { token, userId, anonymousName, email, role } = action.payload;
-            state.token = token;
+            const { userId, anonymousName, email, role } = action.payload;
             state.userId = userId ?? null;
             state.anonymousName = anonymousName ?? null;
             state.email = email ?? null;
             state.role = role ?? "user";
             state.isAuthenticated = true;
 
-            localStorage.setItem("token", token);
+            // Persist non-sensitive profile data only (no token)
             if (userId) localStorage.setItem("userId", userId);
             if (anonymousName) localStorage.setItem("anonymousName", anonymousName);
             if (email) localStorage.setItem("email", email);
@@ -47,14 +51,13 @@ const authSlice = createSlice({
         },
 
         logout: (state) => {
-            state.token = null;
             state.userId = null;
             state.anonymousName = null;
             state.email = null;
             state.role = null;
             state.isAuthenticated = false;
 
-            localStorage.removeItem("token");
+            // Clear profile data from localStorage (no token to remove)
             localStorage.removeItem("userId");
             localStorage.removeItem("anonymousName");
             localStorage.removeItem("email");

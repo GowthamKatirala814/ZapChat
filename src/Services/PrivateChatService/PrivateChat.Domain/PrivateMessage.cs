@@ -40,4 +40,10 @@ public class PrivateMessage
     public bool IsDeleted { get; set; } = false;
 
     public DateTime? DeletedAt { get; set; }
+
+    public string? DeletedBy { get; set; }
+
+    public bool IsEdited { get; set; } = false;
+
+    public DateTime? EditedAt { get; set; }
 }

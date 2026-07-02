@@ -15,11 +15,12 @@ export interface RegisterRequest {
 }
 
 export interface AuthResponse {
-    token: string;
+    // Token is NO LONGER in the response body — it lives in an HttpOnly cookie.
+    // Only non-sensitive profile data is returned.
     userId: string;
     anonymousName: string;
     email?: string;
-    role?: "user" | "admin";
+    role: "user" | "admin";
 }
 
 export interface ProfileData {
@@ -46,6 +47,22 @@ export const login = async (request: LoginRequest): Promise<AuthResponse> => {
 export const register = async (request: RegisterRequest): Promise<AuthResponse> => {
     const response = await api.post("/api/auth/register", request);
     return response.data as AuthResponse;
+};
+
+// Refresh the access token using the HttpOnly refresh_token cookie.
+// The new access_token cookie is set automatically by the response Set-Cookie header.
+export const refreshToken = async (): Promise<AuthResponse> => {
+    const response = await api.post("/api/auth/refresh");
+    return response.data as AuthResponse;
+};
+
+// Tell the backend to delete the refresh token and clear cookies.
+export const logoutApi = async (): Promise<void> => {
+    try {
+        await api.post("/api/auth/logout");
+    } catch {
+        // Ignore errors — we clear client-side state regardless
+    }
 };
 
 export const getMe = async (): Promise<ProfileData> => {

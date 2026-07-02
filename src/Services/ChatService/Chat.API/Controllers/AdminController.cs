@@ -216,31 +216,26 @@ public class AdminController : ControllerBase
 
         var reportedIds = request?.ReportedMessageIds ?? new List<Guid>();
 
-        // Get message counts per room (non-removed messages only)
-        var roomStats = await _context.Messages
-            .Where(m => !m.IsRemoved)
-            .GroupBy(m => m.ChatRoomId)
-            .Select(g => new
+        // Get stats per room, starting from ChatRooms so empty rooms are included
+        var roomStats = await _context.ChatRooms
+            .Where(r => !string.IsNullOrWhiteSpace(r.Name))
+            .Select(room => new
             {
-                roomId       = g.Key,
-                messageCount = g.Count(),
-                // Count how many of this room's messages are in the reported set
-                reportCount  = g.Count(m => reportedIds.Contains(m.Id))
+                roomName = room.Name,
+                messageCount = _context.Messages.Count(m => m.ChatRoomId == room.Id && !m.IsRemoved),
+                reportCount = _context.Messages.Count(m => m.ChatRoomId == room.Id && !m.IsRemoved && reportedIds.Contains(m.Id))
             })
             .OrderByDescending(x => x.messageCount)
             .Take(50) // fetch more than top before filtering
-            .Join(_context.ChatRooms,
-                msg  => msg.roomId,
-                room => room.Id,
-                (msg, room) => new
-                {
-                    roomName     = room.Name,
-                    messageCount = msg.messageCount,
-                    reportCount  = msg.reportCount,
-                    reportRate   = msg.messageCount > 0
-                        ? Math.Round((double)msg.reportCount / msg.messageCount * 100, 1)
-                        : 0.0
-                })
+            .Select(x => new
+            {
+                roomName = x.roomName,
+                messageCount = x.messageCount,
+                reportCount = x.reportCount,
+                reportRate = x.messageCount > 0
+                    ? Math.Round((double)x.reportCount / x.messageCount * 100, 1)
+                    : 0.0
+            })
             .ToListAsync();
 
         var result = roomStats

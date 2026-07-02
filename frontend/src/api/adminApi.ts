@@ -15,6 +15,45 @@ export interface DashboardStats {
     pendingReports: number;
 }
 
+export interface AiHealthEvent {
+    id: string;
+    date: string;
+    timestamp: string;
+    previousStatus: string;
+    newStatus: string;
+    message: string;
+}
+
+export interface GeminiStats {
+    requestsToday: number;
+    estimatedQuota: number;
+    usagePercentage: number;
+    remainingEstimatedRequests: number;
+    lastThresholdReached: string | null;
+    quotaStatus: string;
+    lastUpdated: string;
+    
+    // AI Health Metrics
+    currentStatus: string;
+    successfulRequests: number;
+    blockedMessages: number;
+    safeMessages: number;
+    failedRequests: number;
+    error429s: number;
+    timeoutErrors: number;
+    configurationErrors: number;
+    authenticationErrors: number;
+    serverErrors: number;
+    invalidResponses: number;
+    lastSuccessfulModeration: string | null;
+    lastFailedModeration: string | null;
+    lastErrorMessage: string | null;
+    recoveryTime: string | null;
+    uptimePercentage: number;
+    
+    events: AiHealthEvent[];
+}
+
 export interface RecentActivity {
     id: string;
     activityType: string;
@@ -112,10 +151,46 @@ export const getRecentActivity = async (count = 20): Promise<RecentActivity[]> =
     return r.data;
 };
 
+export const getGeminiStats = async (): Promise<GeminiStats> => {
+    const r = await adminApiClient.get("/api/gemini-moderation/stats");
+    return r.data;
+};
+
 // ── Users ─────────────────────────────────────────────────────────────────────
 
 export const getAdminUsers = async (): Promise<AdminUser[]> => {
     const r = await adminApiClient.get("/api/admin/users");
+    return r.data;
+};
+
+export interface PaginatedUsersResponse {
+    items: AdminUser[];
+    totalCount: number;
+    page: number;
+    pageSize: number;
+}
+
+export const getAdminUsersPaginated = async (params: {
+    page?: number;
+    pageSize?: number;
+    search?: string;
+    status?: string;
+    department?: string;
+    branch?: string;
+    sortBy?: string;
+    sortDesc?: boolean;
+}): Promise<PaginatedUsersResponse> => {
+    const query = new URLSearchParams();
+    if (params.page) query.set("Page", String(params.page));
+    if (params.pageSize) query.set("PageSize", String(params.pageSize));
+    if (params.search) query.set("Search", params.search);
+    if (params.status) query.set("Status", params.status);
+    if (params.department) query.set("Department", params.department);
+    if (params.branch) query.set("Branch", params.branch);
+    if (params.sortBy) query.set("SortBy", params.sortBy);
+    if (params.sortDesc !== undefined) query.set("SortDesc", String(params.sortDesc));
+
+    const r = await adminApiClient.get(`/api/admin/users/paginated?${query.toString()}`);
     return r.data;
 };
 

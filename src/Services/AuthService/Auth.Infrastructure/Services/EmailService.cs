@@ -18,7 +18,7 @@ public class EmailService : IEmailService
     /// <summary>Sends a password-reset OTP. Existing forgot-password flow — not changed.</summary>
     public async Task SendOtpEmailAsync(string toEmail, string otpCode, string anonymousName)
     {
-        var message = BuildMessage(toEmail, anonymousName, "Your ZapPulse Password Reset Code");
+        var message = BuildMessage(toEmail, anonymousName, "Your ZapChat Password Reset Code");
 
         message.Body = new TextPart("plain")
         {
@@ -31,7 +31,7 @@ public class EmailService : IEmailService
 
                 If you did not request a password reset, you can safely ignore this email.
 
-                — The ZapPulse Team
+                — The ZapChat Team
                 """
         };
 
@@ -41,12 +41,12 @@ public class EmailService : IEmailService
     /// <summary>Sends an account-verification OTP during the new multi-step registration flow.</summary>
     public async Task SendRegistrationOtpEmailAsync(string toEmail, string otpCode, string fullName)
     {
-        var message = BuildMessage(toEmail, fullName, "Verify your ZapPulse account");
+        var message = BuildMessage(toEmail, fullName, "Verify your ZapChat account");
 
         message.Body = new TextPart("plain")
         {
             Text = $"""
-                Welcome to ZapPulse!
+                Welcome to ZapChat!
 
                 Hi {fullName},
 
@@ -54,11 +54,22 @@ public class EmailService : IEmailService
 
                 This code expires in 10 minutes.
 
-                If you did not create a ZapPulse account, ignore this email.
+                If you did not create a ZapChat account, ignore this email.
 
-                — The ZapPulse Team
+                — The ZapChat Team
                 """
         };
+
+        await SendAsync(message);
+    }
+
+    /// <summary>Sends a generic HTML email (e.g. for admin alerts).</summary>
+    public async Task SendEmailAsync(string toEmail, string subject, string htmlBody)
+    {
+        var message = BuildMessage(toEmail, "Administrator", subject);
+
+        var bodyBuilder = new BodyBuilder { HtmlBody = htmlBody };
+        message.Body = bodyBuilder.ToMessageBody();
 
         await SendAsync(message);
     }
@@ -69,7 +80,7 @@ public class EmailService : IEmailService
     {
         var smtpHost    = _configuration["EmailSettings:SmtpHost"]    ?? "smtp.gmail.com";
         var senderEmail = _configuration["EmailSettings:SenderEmail"] ?? "";
-        var senderName  = _configuration["EmailSettings:SenderName"]  ?? "ZapPulse";
+        var senderName  = _configuration["EmailSettings:SenderName"]  ?? "ZapChat";
 
         var msg = new MimeMessage();
         msg.From.Add(new MailboxAddress(senderName, senderEmail));

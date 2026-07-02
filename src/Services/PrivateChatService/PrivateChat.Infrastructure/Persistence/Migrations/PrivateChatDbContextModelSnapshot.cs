@@ -28,13 +28,27 @@ namespace PrivateChat.Infrastructure.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<DateTime?>("LastMessageAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastMessagePreview")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<Guid>("User1Id")
                         .HasColumnType("uniqueidentifier");
+
+                    b.Property<int>("User1UnreadCount")
+                        .HasColumnType("int");
 
                     b.Property<Guid>("User2Id")
                         .HasColumnType("uniqueidentifier");
 
+                    b.Property<int>("User2UnreadCount")
+                        .HasColumnType("int");
+
                     b.HasKey("Id");
+
+                    b.HasIndex("LastMessageAt");
 
                     b.ToTable("Conversations");
                 });
@@ -62,10 +76,19 @@ namespace PrivateChat.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("FileName")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsEdited")
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsRead")
@@ -91,6 +114,8 @@ namespace PrivateChat.Infrastructure.Persistence.Migrations
                         .HasColumnType("datetime2");
 
                     b.HasKey("Id");
+
+                    b.HasIndex("ConversationId");
 
                     b.HasIndex("ParentMessageId");
 
@@ -124,8 +149,97 @@ namespace PrivateChat.Infrastructure.Persistence.Migrations
                     b.ToTable("MessageReactions");
                 });
 
+            modelBuilder.Entity("PrivateChat.Domain.Entities.PrivateModerationAuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AnonymousName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("float");
+
+                    b.Property<Guid>("ConversationId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("Explanation")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("MessageSnippet")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("WasAllowed")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("WasRuleBasedBlock")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("ConversationId");
+
+                    b.HasIndex("Timestamp");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("WasAllowed");
+
+                    b.ToTable("PrivateModerationAuditLogs");
+                });
+
+            modelBuilder.Entity("PrivateChat.Domain.UserBlock", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("BlockedAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<Guid>("BlockedId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("BlockerId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("BlockerId", "BlockedId")
+                        .IsUnique();
+
+                    b.ToTable("UserBlocks");
+                });
+
             modelBuilder.Entity("PrivateChat.Domain.Entities.PrivateMessage", b =>
                 {
+                    b.HasOne("PrivateChat.Domain.Entities.Conversation", null)
+                        .WithMany("Messages")
+                        .HasForeignKey("ConversationId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
                     b.HasOne("PrivateChat.Domain.Entities.PrivateMessage", "ParentMessage")
                         .WithMany("Replies")
                         .HasForeignKey("ParentMessageId")
@@ -143,6 +257,11 @@ namespace PrivateChat.Infrastructure.Persistence.Migrations
                         .IsRequired();
 
                     b.Navigation("PrivateMessage");
+                });
+
+            modelBuilder.Entity("PrivateChat.Domain.Entities.Conversation", b =>
+                {
+                    b.Navigation("Messages");
                 });
 
             modelBuilder.Entity("PrivateChat.Domain.Entities.PrivateMessage", b =>

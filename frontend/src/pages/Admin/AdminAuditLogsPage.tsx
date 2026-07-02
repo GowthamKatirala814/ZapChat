@@ -67,11 +67,11 @@ export default function AdminAuditLogsPage() {
     ];
 
     return (
-        <div className="p-6 space-y-5">
+        <div className="p-3 sm:p-6 space-y-4 sm:space-y-5">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-start justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Audit Logs</h1>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white">Audit Logs</h1>
                     <p className="text-sm text-slate-400 mt-0.5">{total.toLocaleString()} total entries</p>
                 </div>
                 <button onClick={() => load(page)} disabled={loading}
@@ -110,7 +110,8 @@ export default function AdminAuditLogsPage() {
             {/* Table */}
             <div className="rounded-2xl border border-slate-800 overflow-hidden"
                 style={{ background: "rgba(15,23,42,0.7)" }}>
-                <table className="w-full text-sm">
+                <div className="overflow-x-auto">
+                <table className="w-full text-sm min-w-[600px]">
                     <thead>
                         <tr className="border-b border-slate-800">
                             {["Action", "Entity Type", "Entity ID", "Performed By", "Timestamp"].map(h => (
@@ -166,6 +167,7 @@ export default function AdminAuditLogsPage() {
                         )}
                     </tbody>
                 </table>
+                </div>
             </div>
 
             {/* Pagination */}

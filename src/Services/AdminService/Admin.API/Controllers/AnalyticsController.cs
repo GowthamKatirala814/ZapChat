@@ -1,6 +1,7 @@
 using Admin.Application.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.Extensions.Caching.Memory;
 
 namespace Admin.API.Controllers;
 
@@ -10,10 +11,22 @@ namespace Admin.API.Controllers;
 public class AnalyticsController : ControllerBase
 {
     private readonly IAnalyticsService _analyticsService;
+    private readonly IMemoryCache _cache;
 
-    public AnalyticsController(IAnalyticsService analyticsService)
+    public AnalyticsController(IAnalyticsService analyticsService, IMemoryCache cache)
     {
         _analyticsService = analyticsService;
+        _cache = cache;
+    }
+
+    private async Task<IActionResult> GetCachedAsync<T>(string key, Func<Task<T>> func)
+    {
+        if (!_cache.TryGetValue(key, out T? result))
+        {
+            result = await func();
+            _cache.Set(key, result, TimeSpan.FromSeconds(60));
+        }
+        return Ok(result);
     }
 
     // ─── Existing endpoints (unchanged) ──────────────────────────────────────
@@ -22,131 +35,92 @@ public class AnalyticsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetUserGrowth([FromQuery] int days = 30)
-    {
-        var data = await _analyticsService.GetUserGrowthAsync(days);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetUserGrowth([FromQuery] int days = 30) =>
+        GetCachedAsync($"UserGrowth_{days}", () => _analyticsService.GetUserGrowthAsync(days));
 
     [HttpGet("active-rooms")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetActiveRooms([FromQuery] int top = 10)
-    {
-        var data = await _analyticsService.GetActiveRoomsAsync(top);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetActiveRooms([FromQuery] int top = 10) =>
+        GetCachedAsync($"ActiveRooms_{top}", () => _analyticsService.GetActiveRoomsAsync(top));
 
     [HttpGet("active-users")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetActiveUsers([FromQuery] int top = 10)
-    {
-        var data = await _analyticsService.GetActiveUsersAsync(top);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetActiveUsers([FromQuery] int top = 10) =>
+        GetCachedAsync($"ActiveUsers_{top}", () => _analyticsService.GetActiveUsersAsync(top));
 
     [HttpGet("daily-messages")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetDailyMessages([FromQuery] int days = 30)
-    {
-        var data = await _analyticsService.GetDailyMessagesAsync(days);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetDailyMessages([FromQuery] int days = 30) =>
+        GetCachedAsync($"DailyMessages_{days}", () => _analyticsService.GetDailyMessagesAsync(days));
 
     [HttpGet("private-chat-volume")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetPrivateChatVolume([FromQuery] int days = 30)
-    {
-        var data = await _analyticsService.GetPrivateChatVolumeAsync(days);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetPrivateChatVolume([FromQuery] int days = 30) =>
+        GetCachedAsync($"PrivateChatVolume_{days}", () => _analyticsService.GetPrivateChatVolumeAsync(days));
 
     [HttpGet("daily-polls")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetDailyPolls([FromQuery] int days = 30)
-    {
-        var data = await _analyticsService.GetDailyPollsAsync(days);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetDailyPolls([FromQuery] int days = 30) =>
+        GetCachedAsync($"DailyPolls_{days}", () => _analyticsService.GetDailyPollsAsync(days));
 
     [HttpGet("most-voted-polls")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetMostVotedPolls([FromQuery] int top = 10)
-    {
-        var data = await _analyticsService.GetMostVotedPollsAsync(top);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetMostVotedPolls([FromQuery] int top = 10) =>
+        GetCachedAsync($"MostVotedPolls_{top}", () => _analyticsService.GetMostVotedPollsAsync(top));
 
     [HttpGet("daily-notifications")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetDailyNotifications([FromQuery] int days = 30)
-    {
-        var data = await _analyticsService.GetDailyNotificationsAsync(days);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetDailyNotifications([FromQuery] int days = 30) =>
+        GetCachedAsync($"DailyNotifications_{days}", () => _analyticsService.GetDailyNotificationsAsync(days));
 
     [HttpGet("report-trends")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetReportTrends([FromQuery] int days = 30)
-    {
-        var data = await _analyticsService.GetReportTrendsAsync(days);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetReportTrends([FromQuery] int days = 30) =>
+        GetCachedAsync($"ReportTrends_{days}", () => _analyticsService.GetReportTrendsAsync(days));
 
     [HttpGet("report-reasons")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetReportReasons()
-    {
-        var data = await _analyticsService.GetReportReasonsAsync();
-        return Ok(data);
-    }
+    public Task<IActionResult> GetReportReasons() =>
+        GetCachedAsync("ReportReasons", () => _analyticsService.GetReportReasonsAsync());
 
     [HttpGet("most-active-rooms")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetMostActiveRooms([FromQuery] int top = 10)
-    {
-        var data = await _analyticsService.GetMostActiveRoomsAsync(top);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetMostActiveRooms([FromQuery] int top = 10) =>
+        GetCachedAsync($"MostActiveRooms_{top}", () => _analyticsService.GetMostActiveRoomsAsync(top));
 
     [HttpGet("most-active-users")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetMostActiveUsers([FromQuery] int top = 10)
-    {
-        var data = await _analyticsService.GetMostActiveUsersAsync(top);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetMostActiveUsers([FromQuery] int top = 10) =>
+        GetCachedAsync($"MostActiveUsers_{top}", () => _analyticsService.GetMostActiveUsersAsync(top));
 
     [HttpGet("daily-reports")]
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetDailyReports([FromQuery] int days = 30)
-    {
-        var data = await _analyticsService.GetDailyReportsAsync(days);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetDailyReports([FromQuery] int days = 30) =>
+        GetCachedAsync($"DailyReports_{days}", () => _analyticsService.GetDailyReportsAsync(days));
 
     // ─── New analytics endpoints ──────────────────────────────────────────────
 
@@ -158,11 +132,8 @@ public class AnalyticsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetRoomHealth([FromQuery] int top = 10)
-    {
-        var data = await _analyticsService.GetRoomHealthAsync(top);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetRoomHealth([FromQuery] int top = 10) =>
+        GetCachedAsync($"RoomHealth_{top}", () => _analyticsService.GetRoomHealthAsync(top));
 
     /// <summary>
     /// Chart 3 — Poll Participation by Topic.
@@ -172,11 +143,8 @@ public class AnalyticsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetPollParticipation([FromQuery] int top = 6)
-    {
-        var data = await _analyticsService.GetPollParticipationAsync(top);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetPollParticipation([FromQuery] int top = 6) =>
+        GetCachedAsync($"PollParticipation_{top}", () => _analyticsService.GetPollParticipationAsync(top));
 
     /// <summary>
     /// Chart 4 — Message Volume by Hour of Day.
@@ -186,11 +154,8 @@ public class AnalyticsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetHourlyActivity()
-    {
-        var data = await _analyticsService.GetHourlyActivityAsync();
-        return Ok(data);
-    }
+    public Task<IActionResult> GetHourlyActivity() =>
+        GetCachedAsync("HourlyActivity", () => _analyticsService.GetHourlyActivityAsync());
 
     /// <summary>
     /// Chart 5 — Sentiment Distribution by Room.
@@ -200,9 +165,6 @@ public class AnalyticsController : ControllerBase
     [ProducesResponseType(StatusCodes.Status200OK)]
     [ProducesResponseType(StatusCodes.Status401Unauthorized)]
     [ProducesResponseType(StatusCodes.Status403Forbidden)]
-    public async Task<IActionResult> GetRoomSentiment([FromQuery] int top = 8)
-    {
-        var data = await _analyticsService.GetRoomSentimentAsync(top);
-        return Ok(data);
-    }
+    public Task<IActionResult> GetRoomSentiment([FromQuery] int top = 8) =>
+        GetCachedAsync($"RoomSentiment_{top}", () => _analyticsService.GetRoomSentimentAsync(top));
 }

@@ -115,7 +115,7 @@ export default function AdminRoomsPage() {
     };
 
     return (
-        <div className="min-h-screen p-6 space-y-6" style={{ background: 'linear-gradient(180deg, #0a0f1a 0%, #0d1424 100%)' }}>
+        <div className="min-h-screen p-3 sm:p-6 space-y-5 sm:space-y-6" style={{ background: 'linear-gradient(180deg, #0a0f1a 0%, #0d1424 100%)' }}>
             {/* Toast */}
             {toast && (
                 <div className="fixed top-4 right-4 z-50 px-4 py-3 rounded-xl text-sm font-medium text-white shadow-2xl"

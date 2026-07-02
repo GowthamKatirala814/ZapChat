@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import {
-    Users, UserCheck, UserX, Building2, Flag, AlertCircle, Clock, RefreshCw
+    Users, UserCheck, UserX, Building2, Flag, AlertCircle, Clock, RefreshCw, Sparkles
 } from "lucide-react";
-import { getDashboardStats, getRecentActivity } from "../../api/adminApi";
-import type { DashboardStats, RecentActivity } from "../../api/adminApi";
+import { getDashboardStats, getRecentActivity, getGeminiStats } from "../../api/adminApi";
+import type { DashboardStats, RecentActivity, GeminiStats } from "../../api/adminApi";
 
 interface StatCard {
     label: string;
@@ -39,6 +39,7 @@ function activityIcon(type: string) {
 export default function AdminDashboardPage() {
     const [stats, setStats] = useState<DashboardStats | null>(null);
     const [activity, setActivity] = useState<RecentActivity[]>([]);
+    const [geminiStats, setGeminiStats] = useState<GeminiStats | null>(null);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState<string | null>(null);
 
@@ -46,9 +47,17 @@ export default function AdminDashboardPage() {
         setLoading(true);
         setError(null);
         try {
-            const [s, a] = await Promise.all([getDashboardStats(), getRecentActivity(15)]);
+            const [s, a, g] = await Promise.all([
+                getDashboardStats(), 
+                getRecentActivity(15),
+                getGeminiStats().catch(e => {
+                    console.error("Failed to load Gemini stats", e);
+                    return null;
+                })
+            ]);
             setStats(s);
             setActivity(a);
+            setGeminiStats(g);
         } catch {
             setError("Failed to load dashboard data. Ensure the Admin Service is running.");
         } finally {
@@ -68,11 +77,11 @@ export default function AdminDashboardPage() {
     ] : [];
 
     return (
-        <div className="p-6 space-y-6">
+        <div className="p-3 sm:p-6 space-y-5 sm:space-y-6">
             {/* Header */}
-            <div className="flex items-center justify-between">
+            <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                    <h1 className="text-2xl font-bold text-white">Dashboard</h1>
+                    <h1 className="text-xl sm:text-2xl font-bold text-white">Dashboard</h1>
                     <p className="text-sm text-slate-400 mt-0.5">Platform overview at a glance</p>
                 </div>
                 <button
@@ -106,6 +115,53 @@ export default function AdminDashboardPage() {
                     {cards.map(c => <StatCard key={c.label} {...c} />)}
                 </div>
             )}
+
+            {/* AI Moderation Widget */}
+            {loading && !geminiStats ? (
+                <div className="rounded-2xl h-32 border border-slate-800 animate-pulse" style={{ background: "rgba(15,23,42,0.5)" }} />
+            ) : geminiStats ? (
+                <div className="rounded-2xl border border-slate-800 overflow-hidden p-5" style={{ background: "rgba(15,23,42,0.7)" }}>
+                    <div className="flex items-center justify-between mb-4">
+                        <div className="flex items-center gap-3">
+                            <div className="w-10 h-10 rounded-xl bg-indigo-500/20 flex items-center justify-center">
+                                <Sparkles size={20} className="text-indigo-400" />
+                            </div>
+                            <div>
+                                <h2 className="text-lg font-bold text-white">AI Moderation Usage</h2>
+                                <p className="text-xs text-slate-400 mt-0.5">Gemini API usage for today</p>
+                            </div>
+                        </div>
+                        <span className={`px-2.5 py-1 text-xs font-semibold rounded-full ${geminiStats.quotaStatus === 'EXHAUSTED' ? 'bg-red-500/20 text-red-400 border border-red-500/30' : 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/30'}`}>
+                            {geminiStats.quotaStatus === 'EXHAUSTED' ? 'QUOTA EXHAUSTED' : 'ACTIVE'}
+                        </span>
+                    </div>
+
+                    <div className="space-y-3 pl-[52px]">
+                        <div className="flex justify-between text-sm">
+                            <span className="text-slate-400">Daily Requests: <strong className="text-slate-200">{geminiStats.requestsToday.toLocaleString()}</strong> / {geminiStats.estimatedQuota.toLocaleString()}</span>
+                            <span className="text-white font-medium">{geminiStats.usagePercentage.toFixed(1)}%</span>
+                        </div>
+                        
+                        <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden">
+                            <div 
+                                className={`h-full ${
+                                    geminiStats.usagePercentage >= 90 ? 'bg-red-500' : 
+                                    geminiStats.usagePercentage >= 50 ? 'bg-orange-500' : 
+                                    'bg-emerald-500'
+                                } transition-all duration-1000 ease-out`}
+                                style={{ width: `${Math.min(geminiStats.usagePercentage, 100)}%` }}
+                            />
+                        </div>
+
+                        <div className="flex justify-between text-xs text-slate-500">
+                            <span>Remaining: {geminiStats.remainingEstimatedRequests.toLocaleString()}</span>
+                            {geminiStats.lastThresholdReached && (
+                                <span className="text-orange-400 font-medium">Alert sent: {geminiStats.lastThresholdReached}</span>
+                            )}
+                        </div>
+                    </div>
+                </div>
+            ) : null}
 
             {/* Recent activity */}
             <div className="rounded-2xl border border-slate-800 overflow-hidden"

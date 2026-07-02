@@ -247,14 +247,16 @@ public class AnalyticsService : IAnalyticsService
     {
         try
         {
-            var client = _httpClientFactory.CreateClient();
+            var pollClient = _httpClientFactory.CreateClient();
+            var authClient = _httpClientFactory.CreateClient("AuthService");
 
             // Fetch polls and total user count in parallel
-            var pollTask = client.GetAsync(
+            var pollTask = pollClient.GetAsync(
                 $"{_serviceUrls.PollService}/api/admin/analytics/most-voted-polls?top={top}");
-            var userTask = client.GetAsync(
-                // Only active, non-admin users can participate in polls
-                $"{_serviceUrls.AuthService}/api/auth/users?excludeAdmin=true&excludeDeleted=true");
+            
+            // Use the named authClient which automatically attaches the JWT token
+            var userTask = authClient.GetAsync(
+                "api/auth/users?excludeAdmin=true&excludeDeleted=true");
 
             await Task.WhenAll(pollTask, userTask);
 

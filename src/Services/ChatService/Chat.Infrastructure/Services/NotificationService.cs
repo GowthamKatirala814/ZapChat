@@ -16,7 +16,8 @@ public class NotificationService : INotificationService
     public async Task CreateNotification(
         Guid userId,
         string title,
-        string message)
+        string message,
+        string type = "Message")
     {
         await _httpClient.PostAsJsonAsync(
             "api/notification",
@@ -24,7 +25,8 @@ public class NotificationService : INotificationService
             {
                 UserId = userId,
                 Title = title,
-                Message = message
+                Message = message,
+                Type = type
             });
     }
 }

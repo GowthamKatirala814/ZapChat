@@ -31,6 +31,12 @@ namespace Chat.Infrastructure.Persistence.Migrations
                     b.Property<DateTime>("CreatedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<DateTime?>("LastMessageAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("LastMessagePreview")
+                        .HasColumnType("nvarchar(max)");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasMaxLength(100)
@@ -43,6 +49,32 @@ namespace Chat.Infrastructure.Persistence.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("ChatRooms");
+                });
+
+            modelBuilder.Entity("Chat.Domain.Entities.ChatRoomReadState", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<Guid>("ChatRoomId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<DateTime>("LastReadAt")
+                        .HasColumnType("datetime2");
+
+                    b.Property<int>("UnreadCount")
+                        .HasColumnType("int");
+
+                    b.Property<string>("UserId")
+                        .IsRequired()
+                        .HasColumnType("nvarchar(max)");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("ChatRoomId");
+
+                    b.ToTable("ChatRoomReadStates");
                 });
 
             modelBuilder.Entity("Chat.Domain.Entities.Message", b =>
@@ -73,10 +105,19 @@ namespace Chat.Infrastructure.Persistence.Migrations
                     b.Property<DateTime?>("DeletedAt")
                         .HasColumnType("datetime2");
 
+                    b.Property<string>("DeletedBy")
+                        .HasColumnType("nvarchar(max)");
+
+                    b.Property<DateTime?>("EditedAt")
+                        .HasColumnType("datetime2");
+
                     b.Property<string>("FileName")
                         .HasColumnType("nvarchar(max)");
 
                     b.Property<bool>("IsDeleted")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("IsEdited")
                         .HasColumnType("bit");
 
                     b.Property<bool>("IsRemoved")
@@ -125,6 +166,82 @@ namespace Chat.Infrastructure.Persistence.Migrations
                     b.HasIndex("MessageId");
 
                     b.ToTable("MessageReactions");
+                });
+
+            modelBuilder.Entity("Chat.Domain.Entities.ModerationAuditLog", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("AnonymousName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<string>("Category")
+                        .IsRequired()
+                        .HasMaxLength(50)
+                        .HasColumnType("nvarchar(50)");
+
+                    b.Property<double>("Confidence")
+                        .HasColumnType("float");
+
+                    b.Property<string>("Explanation")
+                        .IsRequired()
+                        .HasMaxLength(500)
+                        .HasColumnType("nvarchar(500)");
+
+                    b.Property<string>("MessageSnippet")
+                        .IsRequired()
+                        .HasMaxLength(200)
+                        .HasColumnType("nvarchar(200)");
+
+                    b.Property<Guid>("RoomId")
+                        .HasColumnType("uniqueidentifier");
+
+                    b.Property<string>("RoomName")
+                        .IsRequired()
+                        .HasMaxLength(100)
+                        .HasColumnType("nvarchar(100)");
+
+                    b.Property<DateTime>("Timestamp")
+                        .HasColumnType("datetime2");
+
+                    b.Property<string>("UserId")
+                        .HasMaxLength(450)
+                        .HasColumnType("nvarchar(450)");
+
+                    b.Property<bool>("WasAllowed")
+                        .HasColumnType("bit");
+
+                    b.Property<bool>("WasRuleBasedBlock")
+                        .HasColumnType("bit");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("Category");
+
+                    b.HasIndex("RoomId");
+
+                    b.HasIndex("Timestamp");
+
+                    b.HasIndex("UserId");
+
+                    b.HasIndex("WasAllowed");
+
+                    b.ToTable("ModerationAuditLogs");
+                });
+
+            modelBuilder.Entity("Chat.Domain.Entities.ChatRoomReadState", b =>
+                {
+                    b.HasOne("Chat.Domain.Entities.ChatRoom", "ChatRoom")
+                        .WithMany()
+                        .HasForeignKey("ChatRoomId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired();
+
+                    b.Navigation("ChatRoom");
                 });
 
             modelBuilder.Entity("Chat.Domain.Entities.Message", b =>

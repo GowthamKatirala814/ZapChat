@@ -1,4 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore;
 using Notification.Domain.Entities;
 using System.Collections.Generic;
 
@@ -14,4 +14,7 @@ public class NotificationDbContext : DbContext
 
     public DbSet<UserNotification> Notifications
     => Set<UserNotification>();
+
+    public DbSet<PushSubscription> PushSubscriptions
+    => Set<PushSubscription>();
 }

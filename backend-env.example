@@ -1,0 +1,46 @@
+# ZapChat Backend - Production Environment Variables Example
+# --------------------------------------------------------
+# This file is a reference for configuring the backend microservices 
+# on platforms like Render or Azure. Do NOT commit real secrets here.
+# For .NET environment variable binding, use double underscores (__) for nested JSON.
+
+# --- GLOBAL (Required for almost all services except Gateway) ---
+ConnectionStrings__DefaultConnection="Server=tcp:YOUR_DB_SERVER;Initial Catalog=ZapChatDB;Persist Security Info=False;User ID=SA;Password=YOUR_STRONG_PASSWORD;MultipleActiveResultSets=False;Encrypt=True;TrustServerCertificate=True;Connection Timeout=30;"
+JwtSettings__Secret="YOUR_256_BIT_SUPER_SECRET_KEY_MAKE_IT_LONG"
+JwtSettings__Issuer="ZapChat"
+JwtSettings__Audience="ZapChatUsers"
+AllowedOrigins="https://your-frontend.vercel.app"
+
+# --- AUTH SERVICE ---
+GeminiSettings__ApiKey="YOUR_GEMINI_API_KEY"
+EmailSettings__SenderEmail="your.email@gmail.com"
+EmailSettings__AppPassword="YOUR_GMAIL_APP_PASSWORD"
+ServiceUrls__AdminService="https://zapchat-admin.onrender.com"
+
+# --- CHAT & PRIVATE CHAT SERVICES ---
+GeminiSettings__ApiKey="YOUR_GEMINI_API_KEY"
+ServiceUrls__AdminService="https://zapchat-admin.onrender.com"
+ServiceUrls__AuthService="https://zapchat-auth.onrender.com"
+ServiceUrls__NotificationService="https://zapchat-notification.onrender.com"
+
+# --- ADMIN SERVICE ---
+ServiceUrls__AuthService="https://zapchat-auth.onrender.com"
+ServiceUrls__ChatService="https://zapchat-chat.onrender.com"
+ServiceUrls__PrivateChatService="https://zapchat-privatechat.onrender.com"
+ServiceUrls__NotificationService="https://zapchat-notification.onrender.com"
+ServiceUrls__PollService="https://zapchat-poll.onrender.com"
+
+# --- GATEWAY API ---
+ReverseProxy__Clusters__auth-cluster__Destinations__destination1__Address="https://zapchat-auth.onrender.com"
+ReverseProxy__Clusters__chat-cluster__Destinations__destination1__Address="https://zapchat-chat.onrender.com"
+ReverseProxy__Clusters__admin-cluster__Destinations__destination1__Address="https://zapchat-admin.onrender.com"
+ReverseProxy__Clusters__privatechat-cluster__Destinations__destination1__Address="https://zapchat-privatechat.onrender.com"
+ReverseProxy__Clusters__notification-cluster__Destinations__destination1__Address="https://zapchat-notification.onrender.com"
+ReverseProxy__Clusters__poll-cluster__Destinations__destination1__Address="https://zapchat-poll.onrender.com"
+
+HealthCheckUrls__AuthService="https://zapchat-auth.onrender.com/health"
+HealthCheckUrls__ChatService="https://zapchat-chat.onrender.com/health"
+HealthCheckUrls__AdminService="https://zapchat-admin.onrender.com/health"
+HealthCheckUrls__PrivateChatService="https://zapchat-privatechat.onrender.com/health"
+HealthCheckUrls__NotificationService="https://zapchat-notification.onrender.com/health"
+HealthCheckUrls__PollService="https://zapchat-poll.onrender.com/health"

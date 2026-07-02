@@ -170,7 +170,7 @@ export default function VerifyOtpPage() {
                             <span className="text-xl font-black text-white">Z</span>
                         </div>
                         <span className="text-2xl font-black text-white">
-                            Zap<span style={{ color: "#38BDF8" }}>Pulse</span>
+                            Zap<span style={{ color: "#38BDF8" }}>Chat</span>
                         </span>
                     </div>
 
