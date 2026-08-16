@@ -44,7 +44,13 @@ public sealed class PasswordResetService : IPasswordResetService
     public async Task<StepResult> RequestAsync(
         ForgotPasswordRequest request, CancellationToken ct = default)
     {
-        const string always = "If an account with that email exists, a reset code has been sent.";
+        // One message, computed before the lookup and returned by every path below, so
+        // it cannot accidentally come to depend on whether the account exists. Only the
+        // development reveal deviates from it, and that is deliberate and gated twice.
+        var always = _email.DeliversToLog
+            ? "No email was sent: this server is using the log transport. " +
+              "If an account exists, the code is in the auth service log."
+            : "If an account with that email exists, a reset code has been sent.";
 
         var user = await _users.GetByEmailAsync(request.Email, ct);
 
@@ -76,6 +82,19 @@ public sealed class PasswordResetService : IPasswordResetService
         {
             // Logged, but still reported as success — the response must not differ.
             _logger.LogError(ex, "Failed to send a password reset code to user {UserId}.", user.Id);
+        }
+
+        if (_email.RevealsCodes)
+        {
+            // Development host with the log transport, and nothing else — see
+            // EmailOptions.RevealCodesInResponses for the two gates that guard this.
+            //
+            // Note what it costs: this reply differs from the one an unknown address
+            // gets, so the constant-response property above no longer holds here. That
+            // is acceptable *only* on such a host, because the code is already sitting in
+            // a plaintext log there — there is no confidentiality left to protect. On
+            // every other host this branch does not execute and all callers get `always`.
+            return new StepResult(true, $"Development mode — no email was sent. Your reset code is {code}.");
         }
 
         return new StepResult(true, always);

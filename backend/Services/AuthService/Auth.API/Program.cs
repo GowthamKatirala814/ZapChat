@@ -18,6 +18,18 @@ builder.AddZapChatDefaults(new ZapChatHost.ServiceInfo("Auth", HubPaths: []));
 // ── Options ───────────────────────────────────────────────────────────────────
 builder.Services.Configure<EmailOptions>(
     builder.Configuration.GetSection(EmailOptions.SectionName));
+
+if (builder.Environment.IsDevelopment())
+{
+    // Development only: when mail is going to the log rather than to a mailbox, echo the
+    // one-time code back in the API response so registration and password reset can be
+    // completed without digging through the log file.
+    //
+    // PostConfigure runs after the section is bound, so UseLogTransport is already set and
+    // the helper can gate on it — outside Development this line does not exist at all,
+    // which is the point. On any other host the code is never in a response body.
+    builder.Services.PostConfigure<EmailOptions>(options => options.EnableCodeRevealForDevelopment());
+}
 builder.Services.Configure<GeminiOptions>(
     builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<CookieOptionsConfig>(

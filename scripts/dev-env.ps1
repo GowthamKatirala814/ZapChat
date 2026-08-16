@@ -31,9 +31,16 @@ $env:ZAPCHAT_ADMINSETTINGS__ADMINEMAIL = ''
 # stage reports itself unavailable rather than silently passing everything.
 $env:ZAPCHAT_GEMINI__APIKEY = ''
 
-# SMTP for OTP emails. With UseLogTransport=true the codes are written to the Auth
-# service log instead, so registration and password reset can be exercised with no
-# mail account at all.
+# SMTP for OTP emails.
+#
+# UseLogTransport=true means NO EMAIL IS SENT AT ALL. Verification and password-reset
+# codes are written to logs/Auth.log and, because this is a Development host, returned
+# in the API response so they appear directly on the verification screen. Do not wait
+# for a message in your inbox — none is coming, to any address.
+#
+# To send real mail: set this to 'false' and fill in the sender below. The SMTP host
+# defaults to smtp.gmail.com:587; a Microsoft 365 sender needs smtp.office365.com and a
+# tenant that still permits SMTP AUTH, which most now disable by default.
 $env:ZAPCHAT_EMAIL__USELOGTRANSPORT = 'true'
 $env:ZAPCHAT_EMAIL__SENDEREMAIL = ''
 $env:ZAPCHAT_EMAIL__APPPASSWORD = ''

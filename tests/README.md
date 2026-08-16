@@ -48,6 +48,11 @@ node frontend-contract-e2e.mjs
   routes is correct and is exercised deliberately in section 16 of `api-e2e.sh` — it must
   not throttle test setup.
 
+  `frontend-contract-e2e.mjs` keeps exactly one login on the gateway path, because that is
+  the path the browser uses and it should be covered. Running it immediately after
+  `api-e2e.sh` therefore meets an exhausted limiter; the suite detects the 429 and waits
+  out the window rather than failing, so it costs a minute but never lies.
+
 * **OTP codes are read from the log.** `api-e2e.sh` greps `logs/Auth.log`, which works
   because the development mail transport writes codes there instead of sending email
   (`ZAPCHAT_EMAIL__USELOGTRANSPORT=true`). The path is resolved relative to the repository,

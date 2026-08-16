@@ -181,11 +181,26 @@ async function run() {
   // ── Auth ───────────────────────────────────────────────────────────────────
   group("Authentication");
 
-  await check("POST /api/auth/login (alpha)", async () => {
-    const response = await alpha.post("/api/auth/login", {
+  await check("POST /api/auth/login (alpha, through the gateway)", async () => {
+    // The one login that deliberately goes through the gateway, because that is the
+    // path the browser uses. The gateway allows five per minute, and api-e2e.sh
+    // section 16 exhausts that limit on purpose — so if this suite runs straight
+    // afterwards it must wait for the window rather than report a false failure.
+    let response = await alpha.post("/api/auth/login", {
       email: "alpha@zapcg.com",
       password: "Str0ngPass!23",
     });
+
+    if (response.status === 429) {
+      console.log("        rate-limited by the gateway; waiting 60s for the window…");
+      await new Promise((resolve) => setTimeout(resolve, 60_000));
+
+      response = await alpha.post("/api/auth/login", {
+        email: "alpha@zapcg.com",
+        password: "Str0ngPass!23",
+      });
+    }
+
     expectStatus(response, 200, "login");
     expect(alpha.cookies.has("access_token"), "no access_token cookie was set");
     expect(!("token" in response.data), "response body leaked a token");

@@ -89,7 +89,31 @@ public sealed class RegistrationService : IRegistrationService
                 "We could not send the verification email. Please try again shortly.");
         }
 
-        return new StepResult(true, "A 6-digit verification code has been sent to your email.");
+        // Do not claim mail was sent when it was not. With the log transport active
+        // nothing leaves the process, and a user told to check their inbox waits for a
+        // message that will never arrive — which is exactly how this looked when it was
+        // first reported.
+        return new StepResult(true, DescribeDelivery(code));
+    }
+
+    /// <summary>
+    /// What to tell the caller about where their code went.
+    ///
+    /// The code itself is included only on a development host using the log transport;
+    /// see EmailOptions.RevealCodesInResponses.
+    /// </summary>
+    private string DescribeDelivery(string code)
+    {
+        if (_email.RevealsCodes)
+            return $"Development mode — no email was sent. Your verification code is {code}.";
+
+        if (_email.DeliversToLog)
+        {
+            return "No email was sent: this server is using the log transport. " +
+                   "The code is in the auth service log.";
+        }
+
+        return "A 6-digit verification code has been sent to your email.";
     }
 
     public async Task<StepResult> VerifyOtpAsync(

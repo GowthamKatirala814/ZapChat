@@ -27,7 +27,10 @@ register() { # register <email> <name> <branch> -> prints userId
     -d "{\"fullName\":\"$name\",\"email\":\"$email\",\"department\":\"Engineering\",\"branch\":\"$branch\"}"
   sleep 1.2
   local otp
-  otp=$(grep -oE "verification code is: [0-9]{6}" "$LOG/Auth.log" | tail -1 | grep -oE "[0-9]{6}")
+  # -a forces text mode. A service killed mid-write can leave NUL bytes in the log,
+  # and without this grep declares the file binary and matches nothing — which shows up
+  # as an empty OTP and a mystifying validation error rather than as a log problem.
+  otp=$(grep -a -oE "verification code is: [0-9]{6}" "$LOG/Auth.log" | tail -1 | grep -oE "[0-9]{6}")
   local vt
   vt=$(curl -sk -X POST "$AUTH/api/auth/register/verify-otp" -H 'Content-Type: application/json' \
       -d "{\"email\":\"$email\",\"otpCode\":\"$otp\"}" | jq "d['token']")

@@ -25,6 +25,20 @@ public sealed class EmailOptions
     /// </summary>
     public bool UseLogTransport { get; set; }
 
+    /// <summary>
+    /// Include the one-time code in the API response instead of only in the log.
+    ///
+    /// NOT bindable from configuration by design — Program.cs sets it, and only when
+    /// the host is in the Development environment AND the log transport is active. Two
+    /// independent gates, because a single one is not enough: on the password-reset
+    /// path this value turns "forgot password" into "take over any account", since the
+    /// endpoint is unauthenticated and the caller supplies the victim's address.
+    /// </summary>
+    public bool RevealCodesInResponses { get; private set; }
+
+    /// <summary>Called only from the composition root. See the property remarks.</summary>
+    public void EnableCodeRevealForDevelopment() => RevealCodesInResponses = UseLogTransport;
+
     public bool IsConfigured =>
         !string.IsNullOrWhiteSpace(SenderEmail) && !string.IsNullOrWhiteSpace(AppPassword);
 }
@@ -38,7 +52,23 @@ public sealed class EmailService : IEmailService
     {
         _options = options.Value;
         _logger = logger;
+
+        if (DeliversToLog)
+        {
+            // Logged once at construction, at warning level, so it is obvious in the
+            // startup output why no mail is arriving.
+            _logger.LogWarning(
+                "Email is using the LOG TRANSPORT: verification codes are written to this " +
+                "log and no mail is sent. Configure Email:SenderEmail and Email:AppPassword " +
+                "and set Email:UseLogTransport=false to send real messages.");
+        }
     }
+
+    /// <inheritdoc />
+    public bool DeliversToLog => _options.UseLogTransport || !_options.IsConfigured;
+
+    /// <inheritdoc />
+    public bool RevealsCodes => _options.RevealCodesInResponses && DeliversToLog;
 
     public Task SendPasswordResetOtpAsync(string toEmail, string otpCode, string anonymousName) =>
         SendPlainAsync(toEmail, anonymousName, "Your ZapChat password reset code",
@@ -92,7 +122,7 @@ public sealed class EmailService : IEmailService
         var recipient = message.To.ToString();
 
         // Development escape hatch: no SMTP credentials needed to test the flows.
-        if (_options.UseLogTransport || !_options.IsConfigured)
+        if (DeliversToLog)
         {
             if (!_options.UseLogTransport)
             {
@@ -107,12 +137,28 @@ public sealed class EmailService : IEmailService
             return;
         }
 
-        using var client = new SmtpClient();
-        await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, SecureSocketOptions.StartTls);
-        await client.AuthenticateAsync(_options.SenderEmail, _options.AppPassword);
-        await client.SendAsync(message);
-        await client.DisconnectAsync(true);
+        try
+        {
+            using var client = new SmtpClient();
 
-        _logger.LogInformation("Sent '{Subject}' to {Recipient}.", subject, recipient);
+            await client.ConnectAsync(_options.SmtpHost, _options.SmtpPort, SecureSocketOptions.StartTls);
+            await client.AuthenticateAsync(_options.SenderEmail, _options.AppPassword);
+            await client.SendAsync(message);
+            await client.DisconnectAsync(true);
+
+            _logger.LogInformation("Sent '{Subject}' to {Recipient}.", subject, recipient);
+        }
+        catch (Exception ex)
+        {
+            // The caller turns this into a 503 with a "try again shortly" message. Log
+            // the host and port too: an authentication failure against the wrong SMTP
+            // server for the sender's domain is by far the most common cause, and the
+            // exception alone does not say which server was tried.
+            _logger.LogError(ex,
+                "SMTP delivery of '{Subject}' to {Recipient} failed via {Host}:{Port} as {Sender}.",
+                subject, recipient, _options.SmtpHost, _options.SmtpPort, _options.SenderEmail);
+
+            throw;
+        }
     }
 }

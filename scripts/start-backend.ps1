@@ -108,6 +108,16 @@ function Start-ZapChatService {
     $log = Join-Path $logDir "$($Service.Name).log"
     $projectPath = Join-Path $root $Service.Project
 
+    # Start each run from an empty log.
+    #
+    # Start-Process -RedirectStandardOutput does not truncate: it reopens the existing
+    # file and writes from offset zero, so a shorter run leaves the previous run's tail
+    # behind, and a process killed mid-write leaves a block of NUL bytes where the
+    # buffer never flushed. Either one makes grep classify the file as binary and refuse
+    # to match — which silently hides the OTP codes developers read from Auth.log, and
+    # makes tests/api-e2e.sh extract an empty code.
+    Remove-Item $log, "$log.err" -Force -ErrorAction SilentlyContinue
+
     $windowStyle = if ($ShowWindows) { 'Normal' } else { 'Hidden' }
 
     # ASPNETCORE_URLS is passed per process so each service binds only its own port.

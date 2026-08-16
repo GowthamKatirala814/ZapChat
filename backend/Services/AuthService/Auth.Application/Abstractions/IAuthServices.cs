@@ -11,6 +11,24 @@ public interface IPasswordHasher
 
 public interface IEmailService
 {
+    /// <summary>
+    /// True when messages are written to the service log instead of being delivered.
+    ///
+    /// Callers must consult this before telling a user their code "has been sent to
+    /// your email" — with the log transport active nothing is sent anywhere, and a
+    /// message claiming otherwise leaves the user waiting for mail that will never
+    /// arrive.
+    /// </summary>
+    bool DeliversToLog { get; }
+
+    /// <summary>
+    /// True when the one-time code may be echoed back in the API response.
+    ///
+    /// Only ever true on a development host using the log transport. See
+    /// EmailOptions.RevealCodesInResponses for why this needs two gates.
+    /// </summary>
+    bool RevealsCodes { get; }
+
     Task SendPasswordResetOtpAsync(string toEmail, string otpCode, string anonymousName);
     Task SendRegistrationOtpAsync(string toEmail, string otpCode, string fullName);
     Task SendAsync(string toEmail, string subject, string htmlBody);

@@ -202,9 +202,41 @@ keeping the browser's built-in CSRF protection.
 
 ### 4. Sign in
 
-Registration is self-service: enter your details, then read the six-digit code from
-`logs/Auth.log`. The development mail transport writes codes to the log instead of sending
-email, so no SMTP account is needed.
+Registration is self-service. **No email is sent in development** — `dev-env.ps1` sets
+`ZAPCHAT_EMAIL__USELOGTRANSPORT=true`, so verification and password-reset codes never leave
+the process and no SMTP account is needed. Waiting for a message in your inbox is the one
+thing that will not work.
+
+Instead, the code is shown **directly on the verification screen**:
+
+> Development mode — no email was sent. Your verification code is 122516.
+
+It is also written to `logs/Auth.log`, if you prefer to read it there:
+
+```bash
+grep -a "verification code is" logs/Auth.log | tail -1
+```
+
+The code only appears in the response when **both** conditions hold: the host is in the
+Development environment *and* the log transport is active. On any other host the response
+says only that the log transport is in use — it never contains the code, because on the
+password-reset path that would turn "forgot password" into "take over any account".
+
+#### Sending real email
+
+Set a real sender and turn the log transport off:
+
+```powershell
+$env:ZAPCHAT_EMAIL__USELOGTRANSPORT = 'false'
+$env:ZAPCHAT_EMAIL__SENDEREMAIL     = 'someone@example.com'
+$env:ZAPCHAT_EMAIL__APPPASSWORD     = '<app password>'
+```
+
+The SMTP host defaults to `smtp.gmail.com:587` (`Email:SmtpHost` / `Email:SmtpPort` in
+`appsettings.json`). A Microsoft 365 sender needs `smtp.office365.com`, and note that most
+tenants now disable SMTP AUTH by default — it has to be enabled for the mailbox by a tenant
+administrator, so this is not purely a configuration change on your side. Delivery failures
+are logged with the host, port and sender that were tried.
 
 To make an account an administrator, set `ZAPCHAT_ADMINSETTINGS__ADMINEMAIL` in
 `scripts/dev-env.ps1` before that account's next sign-in.
