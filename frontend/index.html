@@ -4,7 +4,23 @@
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>frontend</title>
+    <meta name="description" content="Anonymous internal chat for the workplace." />
+    <!-- Set before first paint so the page never flashes the wrong theme. Reads the
+         same key and the same three states as ThemeProvider. -->
+    <script>
+      (function () {
+        try {
+          var stored = localStorage.getItem("zapchat.theme");
+          if (stored === "light" || stored === "dark") {
+            document.documentElement.setAttribute("data-theme", stored);
+            document.documentElement.style.colorScheme = stored;
+          }
+        } catch (e) {
+          /* Private browsing: the media query still applies. */
+        }
+      })();
+    </script>
+    <title>ZapChat</title>
   </head>
   <body>
     <div id="root"></div>

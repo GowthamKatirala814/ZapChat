@@ -1,0 +1,161 @@
+/**
+ * ZapChat design tokens.
+ *
+ * One palette, defined once, consumed everywhere. The previous UI recomputed colours as
+ * local consts (`headerBg`, `headerBorder`, …) inside nearly every page, so login, chat
+ * and admin drifted into three different-looking products.
+ *
+ * Light is the base; dark redefines only the tokens. Components never reference a
+ * literal colour or a `[data-theme]` block directly — they use a token, so both themes
+ * resolve as a set.
+ */
+
+:root {
+  /* Ground and surfaces — cool slate with a blue bias, not neutral grey. */
+  --zc-bg: #f4f6fa;
+  --zc-surface: #ffffff;
+  --zc-surface-2: #eef1f7;
+  --zc-surface-3: #e4e9f2;
+  --zc-sunken: #e8ecf4;
+  --zc-overlay: rgba(15, 23, 42, 0.45);
+
+  /* Text */
+  --zc-text: #0f1729;
+  --zc-text-2: #3f4a60;
+  --zc-text-3: #6b7689;
+  --zc-text-inverse: #ffffff;
+
+  /* Lines */
+  --zc-border: #d5dced;
+  --zc-border-subtle: #e6eaf3;
+  --zc-border-strong: #b9c3da;
+
+  /* Brand */
+  --zc-accent: #2563eb;
+  --zc-accent-hover: #1d4ed8;
+  --zc-accent-soft: #dbe6fe;
+  --zc-accent-text: #1e40af;
+  --zc-accent-contrast: #ffffff;
+
+  /* Semantic — distinct from the brand accent so state never reads as branding. */
+  --zc-success: #067647;
+  --zc-success-soft: #d9f2e5;
+  --zc-warning: #a15c07;
+  --zc-warning-soft: #fdf0d5;
+  --zc-danger: #b42318;
+  --zc-danger-soft: #fde8e6;
+  --zc-info: #0e6f8f;
+  --zc-info-soft: #d8eef6;
+
+  /* Room-type accents, so a channel's nature is legible at a glance. */
+  --zc-room-general: #2563eb;
+  --zc-room-branch: #7c3aed;
+  --zc-room-hr: #b45309;
+
+  /* Elevation */
+  --zc-shadow-sm: 0 1px 2px rgba(15, 23, 42, 0.06);
+  --zc-shadow: 0 1px 3px rgba(15, 23, 42, 0.08), 0 8px 24px -12px rgba(15, 23, 42, 0.16);
+  --zc-shadow-lg: 0 4px 8px rgba(15, 23, 42, 0.06), 0 24px 48px -20px rgba(15, 23, 42, 0.28);
+
+  /* Shape */
+  --zc-radius-sm: 6px;
+  --zc-radius: 10px;
+  --zc-radius-lg: 14px;
+  --zc-radius-full: 999px;
+
+  /* Type */
+  --zc-font: "Segoe UI Variable Text", "Segoe UI", system-ui, -apple-system, sans-serif;
+  --zc-font-display: "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
+  --zc-font-mono: "Cascadia Mono", ui-monospace, "SF Mono", Consolas, monospace;
+
+  /* Layout */
+  --zc-nav-width: 232px;
+  --zc-aside-width: 264px;
+  --zc-header-height: 56px;
+}
+
+@media (prefers-color-scheme: dark) {
+  /* Guarded so an explicit light choice still beats a dark OS. */
+  :root:not([data-theme="light"]) {
+    --zc-bg: #0a0e17;
+    --zc-surface: #121826;
+    --zc-surface-2: #1a2233;
+    --zc-surface-3: #232d42;
+    --zc-sunken: #0d121d;
+    --zc-overlay: rgba(0, 0, 0, 0.62);
+
+    --zc-text: #e8edf7;
+    --zc-text-2: #b0bacd;
+    --zc-text-3: #7c8799;
+    --zc-text-inverse: #0f1729;
+
+    --zc-border: #26314a;
+    --zc-border-subtle: #1c2436;
+    --zc-border-strong: #34415e;
+
+    --zc-accent: #5b9bff;
+    --zc-accent-hover: #7db0ff;
+    --zc-accent-soft: #12233f;
+    --zc-accent-text: #a9caff;
+    --zc-accent-contrast: #06101f;
+
+    --zc-success: #4ec08a;
+    --zc-success-soft: #0c2a1d;
+    --zc-warning: #e0a03f;
+    --zc-warning-soft: #2e2109;
+    --zc-danger: #f2837a;
+    --zc-danger-soft: #331311;
+    --zc-info: #55b6d8;
+    --zc-info-soft: #0a2733;
+
+    --zc-room-general: #5b9bff;
+    --zc-room-branch: #a78bfa;
+    --zc-room-hr: #e0a03f;
+
+    --zc-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+    --zc-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 10px 26px -14px rgba(0, 0, 0, 0.8);
+    --zc-shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.5), 0 28px 56px -24px rgba(0, 0, 0, 0.9);
+  }
+}
+
+/* The explicit toggle wins in both directions. */
+:root[data-theme="dark"] {
+  --zc-bg: #0a0e17;
+  --zc-surface: #121826;
+  --zc-surface-2: #1a2233;
+  --zc-surface-3: #232d42;
+  --zc-sunken: #0d121d;
+  --zc-overlay: rgba(0, 0, 0, 0.62);
+
+  --zc-text: #e8edf7;
+  --zc-text-2: #b0bacd;
+  --zc-text-3: #7c8799;
+  --zc-text-inverse: #0f1729;
+
+  --zc-border: #26314a;
+  --zc-border-subtle: #1c2436;
+  --zc-border-strong: #34415e;
+
+  --zc-accent: #5b9bff;
+  --zc-accent-hover: #7db0ff;
+  --zc-accent-soft: #12233f;
+  --zc-accent-text: #a9caff;
+  --zc-accent-contrast: #06101f;
+
+  --zc-success: #4ec08a;
+  --zc-success-soft: #0c2a1d;
+  --zc-warning: #e0a03f;
+  --zc-warning-soft: #2e2109;
+  --zc-danger: #f2837a;
+  --zc-danger-soft: #331311;
+  --zc-info: #55b6d8;
+  --zc-info-soft: #0a2733;
+
+  --zc-room-general: #5b9bff;
+  --zc-room-branch: #a78bfa;
+  --zc-room-hr: #e0a03f;
+
+  --zc-shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.4);
+  --zc-shadow: 0 1px 3px rgba(0, 0, 0, 0.5), 0 10px 26px -14px rgba(0, 0, 0, 0.8);
+  --zc-shadow-lg: 0 4px 10px rgba(0, 0, 0, 0.5), 0 28px 56px -24px rgba(0, 0, 0, 0.9);
+}

@@ -1,0 +1,14 @@
+{
+  "name": "zapchat-tests",
+  "private": true,
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Black-box end-to-end suites that drive the running ZapChat platform through the API gateway.",
+  "scripts": {
+    "signalr": "node signalr-e2e.mjs"
+  },
+  "comment": "The SignalR suite needs a real hub client. It is declared here rather than borrowed from ../frontend/node_modules because Node resolves bare ESM imports relative to the importing file, not the working directory — so `cd frontend && node ../tests/signalr-e2e.mjs` could never resolve it.",
+  "dependencies": {
+    "@microsoft/signalr": "^10.0.0"
+  }
+}

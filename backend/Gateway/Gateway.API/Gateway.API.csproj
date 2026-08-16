@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- Downstream readiness probes for /health/ready. -->
+    <PackageReference Include="AspNetCore.HealthChecks.Uris" Version="8.0.1" />
+    <!-- The gateway is a pure reverse proxy: it routes, it does not host an API of
+         its own, so there is no OpenAPI document to generate here. Each service
+         serves its own Swagger UI on its own port. -->
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
+  </ItemGroup>
+
+</Project>

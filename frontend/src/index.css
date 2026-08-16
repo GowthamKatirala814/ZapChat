@@ -1,106 +1,188 @@
 @import "tailwindcss";
+@import "./styles/tokens.css";
 
-/* ── Theme CSS variables ────────────────────────────────────────────────────── */
+/*
+ * Tailwind v4 theme bridge: expose the design tokens as Tailwind utilities so a
+ * component can write `bg-surface text-muted border-line` instead of inline styles.
+ * There is exactly one source of truth — tokens.css — and Tailwind reads from it.
+ */
+@theme inline {
+  --color-bg: var(--zc-bg);
+  --color-surface: var(--zc-surface);
+  --color-surface-2: var(--zc-surface-2);
+  --color-surface-3: var(--zc-surface-3);
+  --color-sunken: var(--zc-sunken);
 
-:root.dark, :root:not(.light) {
-    /* Dark mode — Deep Navy + Cyan */
-    --bg-base:        #020617;
-    --bg-surface:     #0f172a;
-    --bg-elevated:    #1e293b;
-    --bg-hover:       rgba(255,255,255,0.05);
-    --bg-active:      rgba(6,182,212,0.15);
+  --color-body: var(--zc-text);
+  --color-muted: var(--zc-text-2);
+  --color-faint: var(--zc-text-3);
+  --color-inverse: var(--zc-text-inverse);
 
-    --border-default: rgba(255,255,255,0.07);
-    --border-subtle:  rgba(255,255,255,0.04);
+  --color-line: var(--zc-border);
+  --color-line-subtle: var(--zc-border-subtle);
+  --color-line-strong: var(--zc-border-strong);
 
-    --text-primary:   #f1f5f9;
-    --text-secondary: #94a3b8;
-    --text-muted:     #475569;
-    --text-accent:    #06b6d4;
+  --color-accent: var(--zc-accent);
+  --color-accent-hover: var(--zc-accent-hover);
+  --color-accent-soft: var(--zc-accent-soft);
+  --color-accent-text: var(--zc-accent-text);
+  --color-accent-contrast: var(--zc-accent-contrast);
 
-    --sidebar-bg:     #020617;
-    --topnav-bg:      #0f172a;
-    --topnav-border:  rgba(255,255,255,0.07);
-    --topnav-text:    #f1f5f9;
-    --topnav-icon:    #94a3b8;
+  --color-success: var(--zc-success);
+  --color-success-soft: var(--zc-success-soft);
+  --color-warning: var(--zc-warning);
+  --color-warning-soft: var(--zc-warning-soft);
+  --color-danger: var(--zc-danger);
+  --color-danger-soft: var(--zc-danger-soft);
+  --color-info: var(--zc-info);
+  --color-info-soft: var(--zc-info-soft);
 
-    --chat-bg:        #0f172a;
-    --input-bg:       rgba(255,255,255,0.05);
-    --input-border:   rgba(255,255,255,0.1);
-    --input-text:     #f1f5f9;
+  --radius-sm: var(--zc-radius-sm);
+  --radius-DEFAULT: var(--zc-radius);
+  --radius-lg: var(--zc-radius-lg);
 
-    --btn-primary:    linear-gradient(135deg, #0ea5e9, #06b6d4);
-    --btn-primary-shadow: 0 8px 24px rgba(6,182,212,0.3);
-    --accent:         #06b6d4;
-    --accent-hover:   #22d3ee;
-    --admin-sidebar:  rgba(2,6,23,0.98);
+  --font-sans: var(--zc-font);
+  --font-display: var(--zc-font-display);
+  --font-mono: var(--zc-font-mono);
 }
 
-:root.light {
-    /* Light mode — White + Sky Blue */
-    --bg-base:        #f0f9ff;
-    --bg-surface:     #ffffff;
-    --bg-elevated:    #f8fafc;
-    --bg-hover:       rgba(14,165,233,0.06);
-    --bg-active:      rgba(14,165,233,0.12);
+/* ── Base ──────────────────────────────────────────────────────────────────── */
 
-    --border-default: #e2e8f0;
-    --border-subtle:  #f1f5f9;
-
-    --text-primary:   #0f172a;
-    --text-secondary: #475569;
-    --text-muted:     #94a3b8;
-    --text-accent:    #0284c7;
-
-    --sidebar-bg:     #0f172a;
-    --topnav-bg:      #ffffff;
-    --topnav-border:  #e2e8f0;
-    --topnav-text:    #0f172a;
-    --topnav-icon:    #64748b;
-
-    --chat-bg:        #f0f9ff;
-    --input-bg:       #ffffff;
-    --input-border:   #e2e8f0;
-    --input-text:     #0f172a;
-
-    --btn-primary:    linear-gradient(135deg, #0ea5e9, #38bdf8);
-    --btn-primary-shadow: 0 8px 24px rgba(14,165,233,0.25);
-    --accent:         #0ea5e9;
-    --accent-hover:   #0284c7;
-    --admin-sidebar:  #0f172a;
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
 }
 
-html,
-body,
-#root {
-    margin: 0;
-    padding: 0;
-    width: 100%;
-    height: 100%;
+html {
+  -webkit-text-size-adjust: 100%;
+  height: 100%;
 }
 
 body {
-    background: var(--bg-base);
-    color: var(--text-primary);
-    transition: background 0.2s ease, color 0.2s ease;
+  margin: 0;
+  height: 100%;
+  /* Explicit background: the host paints its own ground, and a transparent body
+     borrows the wrong theme's colour. */
+  background: var(--zc-bg);
+  color: var(--zc-text);
+  font-family: var(--zc-font);
+  font-size: 15px;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
 }
 
-/* ── Scrollbar ──────────────────────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 4px; height: 4px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(148,163,184,0.3); border-radius: 4px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(148,163,184,0.5); }
-
-/* ── Mobile drawer backdrop ─────────────────────────────────────────────────── */
-.drawer-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(0,0,0,0.5);
-    backdrop-filter: blur(2px);
-    z-index: 40;
+#root {
+  height: 100%;
 }
 
-/* ── Smooth transitions ─────────────────────────────────────────────────────── */
-.sidebar-drawer {
-    transition: transform 0.3s cubic-bezier(0.4,0,0.2,1);
-}
+h1, h2, h3, h4 {
+  font-family: var(--zc-font-display);
+  text-wrap: balance;
+  margin: 0;
+}
+
+button, input, textarea, select {
+  font: inherit;
+  color: inherit;
+}
+
+/* Visible keyboard focus everywhere; the previous UI had none. */
+:focus-visible {
+  outline: 2px solid var(--zc-accent);
+  outline-offset: 2px;
+  border-radius: var(--zc-radius-sm);
+}
+
+:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Scrollbars ────────────────────────────────────────────────────────────── */
+
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--zc-border-strong) transparent;
+}
+
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: var(--zc-border-strong);
+  border-radius: var(--zc-radius-full);
+  border: 3px solid transparent;
+  background-clip: content-box;
+}
+
+/* ── Motion ────────────────────────────────────────────────────────────────── */
+
+@keyframes zc-spin { to { transform: rotate(360deg); } }
+
+@keyframes zc-fade-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes zc-pulse {
+  0%, 100% { opacity: 1; }
+  50%      { opacity: 0.45; }
+}
+
+.zc-enter { animation: zc-fade-up 0.16s ease-out; }
+.zc-spin  { animation: zc-spin 0.7s linear infinite; }
+
+/* Skeleton shimmer for loading states. */
+.zc-skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--zc-surface-2) 25%,
+    var(--zc-surface-3) 37%,
+    var(--zc-surface-2) 63%
+  );
+  background-size: 400% 100%;
+  animation: zc-shimmer 1.4s ease infinite;
+  border-radius: var(--zc-radius-sm);
+}
+
+@keyframes zc-shimmer {
+  0%   { background-position: 100% 50%; }
+  100% { background-position: 0 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ── Utilities ─────────────────────────────────────────────────────────────── */
+
+/* Wide content (tables, code) scrolls inside its own container so the page body
+   never scrolls sideways. */
+.zc-scroll-x {
+  overflow-x: auto;
+  max-width: 100%;
+}
+
+.zc-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Message text: preserve the author's line breaks, break long unbroken strings. */
+.zc-message-text {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}

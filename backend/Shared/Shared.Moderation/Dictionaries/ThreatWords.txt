@@ -1,0 +1,9 @@
+kill
+murder
+suicide
+die
+death
+stab
+shoot
+bomb
+terrorist

@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Chat.Domain\Chat.Domain.csproj" />
+    <ProjectReference Include="..\..\..\Shared\ZapChat.Shared\ZapChat.Shared.csproj" />
+    <ProjectReference Include="..\..\..\Shared\Shared.Moderation\Shared.Moderation.csproj" />
+  </ItemGroup>
+
+</Project>
