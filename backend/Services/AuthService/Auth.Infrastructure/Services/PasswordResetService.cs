@@ -1,6 +1,7 @@
 using Auth.Application.Abstractions;
 using Auth.Application.DTOs;
 using Auth.Domain.Documents;
+using Auth.Infrastructure.Email;
 using Microsoft.Extensions.Logging;
 using ZapChat.Shared.Errors;
 
@@ -16,6 +17,7 @@ public sealed class PasswordResetService : IPasswordResetService
     private readonly IPasswordHasher _hasher;
     private readonly ITokenService _tokens;
     private readonly IEmailService _email;
+    private readonly OtpResendCooldown _cooldown;
     private readonly ILogger<PasswordResetService> _logger;
 
     public PasswordResetService(
@@ -25,6 +27,7 @@ public sealed class PasswordResetService : IPasswordResetService
         IPasswordHasher hasher,
         ITokenService tokens,
         IEmailService email,
+        OtpResendCooldown cooldown,
         ILogger<PasswordResetService> logger)
     {
         _users = users;
@@ -33,6 +36,7 @@ public sealed class PasswordResetService : IPasswordResetService
         _hasher = hasher;
         _tokens = tokens;
         _email = email;
+        _cooldown = cooldown;
         _logger = logger;
     }
 
@@ -44,13 +48,11 @@ public sealed class PasswordResetService : IPasswordResetService
     public async Task<StepResult> RequestAsync(
         ForgotPasswordRequest request, CancellationToken ct = default)
     {
-        // One message, computed before the lookup and returned by every path below, so
-        // it cannot accidentally come to depend on whether the account exists. Only the
-        // development reveal deviates from it, and that is deliberate and gated twice.
-        var always = _email.DeliversToLog
-            ? "No email was sent: this server is using the log transport. " +
-              "If an account exists, the code is in the auth service log."
-            : "If an account with that email exists, a reset code has been sent.";
+        // One message for every outcome, decided before the lookup so it cannot come to
+        // depend on what the lookup found. Whether an address is registered must stay
+        // unobservable: this endpoint is unauthenticated and the caller supplies the
+        // address, so any difference here is an account-enumeration oracle.
+        const string always = "If an account with that email exists, a reset code has been sent.";
 
         var user = await _users.GetByEmailAsync(request.Email, ct);
 
@@ -58,6 +60,19 @@ public sealed class PasswordResetService : IPasswordResetService
         {
             _logger.LogInformation(
                 "Password reset requested for an unknown or inactive address; no mail sent.");
+            return new StepResult(true, always);
+        }
+
+        // Per-address cooldown. Note that it returns `always` rather than a 429: telling
+        // the caller "you are being rate limited" would itself confirm the account
+        // exists, since an unknown address never hits this path. The real client learns
+        // the same thing from the countdown it already runs after the first request.
+        var pending = await _otps.GetLatestAsync(request.Email, OtpPurpose.PasswordReset, ct);
+
+        if (pending is not null && _cooldown.IsTooSoon(pending.CreatedAt))
+        {
+            _logger.LogInformation(
+                "Password reset for user {UserId} suppressed by the resend cooldown.", user.Id);
             return new StepResult(true, always);
         }
 
@@ -76,25 +91,21 @@ public sealed class PasswordResetService : IPasswordResetService
 
         try
         {
-            await _email.SendPasswordResetOtpAsync(user.Email, code, user.Anonymous.Name);
+            await _email.SendPasswordResetOtpAsync(
+                user.Email, code, user.Anonymous.Name, (int)OtpLifetime.TotalMinutes, ct);
         }
         catch (Exception ex)
         {
-            // Logged, but still reported as success — the response must not differ.
-            _logger.LogError(ex, "Failed to send a password reset code to user {UserId}.", user.Id);
-        }
-
-        if (_email.RevealsCodes)
-        {
-            // Development host with the log transport, and nothing else — see
-            // EmailOptions.RevealCodesInResponses for the two gates that guard this.
+            // Invalidate the code that was never delivered, then report success anyway.
             //
-            // Note what it costs: this reply differs from the one an unknown address
-            // gets, so the constant-response property above no longer holds here. That
-            // is acceptable *only* on such a host, because the code is already sitting in
-            // a plaintext log there — there is no confidentiality left to protect. On
-            // every other host this branch does not execute and all callers get `always`.
-            return new StepResult(true, $"Development mode — no email was sent. Your reset code is {code}.");
+            // A 503 here would leak account existence just as surely as a 429 would —
+            // only a registered address can reach a code that fails to send. The
+            // operator learns about it from the log, which is where a delivery outage
+            // belongs; the user sees the same sentence as everyone else.
+            await _otps.InvalidatePendingAsync(request.Email, OtpPurpose.PasswordReset, ct);
+
+            _logger.LogError(ex,
+                "The password reset email for user {UserId} could not be sent.", user.Id);
         }
 
         return new StepResult(true, always);

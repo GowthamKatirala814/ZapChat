@@ -69,6 +69,28 @@ public sealed class RejectedException : ZapChatException
         => Category = category;
 }
 
+/// <summary>
+/// 429 — refused because the caller is asking too often.
+///
+/// Distinct from the gateway's limiter, which partitions by IP and knows nothing about
+/// the resource being requested. This is for limits the service itself has to enforce,
+/// such as "one verification code per mailbox per minute" — a rule the gateway cannot
+/// express because the mailbox is in the request body.
+///
+/// The error code matches the gateway's, so a client handles both the same way.
+/// </summary>
+public sealed class RateLimitedException : ZapChatException
+{
+    public override int StatusCode => 429;
+    public override string ErrorCode => "rate_limited";
+
+    /// <summary>Seconds until the caller may retry, surfaced as Retry-After.</summary>
+    public int? RetryAfterSeconds { get; }
+
+    public RateLimitedException(string message, int? retryAfterSeconds = null) : base(message)
+        => RetryAfterSeconds = retryAfterSeconds;
+}
+
 /// <summary>503 — a dependency this operation needs is unavailable.</summary>
 public sealed class DependencyUnavailableException : ZapChatException
 {

@@ -57,6 +57,9 @@ public sealed class ExceptionHandlingMiddleware
         ApiError body;
         int status;
 
+        // Applied after Response.Clear() below — setting it before would be wiped.
+        int? retryAfterSeconds = null;
+
         switch (ex)
         {
             case ZapChatException known:
@@ -66,6 +69,11 @@ public sealed class ExceptionHandlingMiddleware
                     Errors = known is ValidationException v ? v.Errors : null,
                     Category = known is RejectedException r ? r.Category : null
                 };
+
+                // Retry-After is the standard way to tell a client how long to wait, and
+                // it lets the UI show a real countdown instead of guessing.
+                if (known is RateLimitedException { RetryAfterSeconds: > 0 } limited)
+                    retryAfterSeconds = limited.RetryAfterSeconds;
 
                 // Expected outcomes are not errors. Log them at a level that does
                 // not pollute the error stream.
@@ -107,9 +115,15 @@ public sealed class ExceptionHandlingMiddleware
                 break;
         }
 
+        // Clear() drops anything already staged on the response, headers included — so
+        // Retry-After has to be set after it, not when the exception was classified.
         context.Response.Clear();
         context.Response.StatusCode = status;
         context.Response.ContentType = "application/json; charset=utf-8";
+
+        if (retryAfterSeconds is > 0)
+            context.Response.Headers.RetryAfter = retryAfterSeconds.Value.ToString();
+
         await context.Response.WriteAsync(JsonSerializer.Serialize(body, Json));
     }
 }

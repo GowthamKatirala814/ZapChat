@@ -1,5 +1,6 @@
 using Auth.API.Infrastructure;
 using Auth.Application.Abstractions;
+using Auth.Infrastructure.Email;
 using Auth.Infrastructure.Persistence;
 using Auth.Infrastructure.Repositories;
 using Auth.Infrastructure.Services;
@@ -15,21 +16,42 @@ var builder = WebApplication.CreateBuilder(args);
 // authorization, index bootstrap, health checks.
 builder.AddZapChatDefaults(new ZapChatHost.ServiceInfo("Auth", HubPaths: []));
 
-// ── Options ───────────────────────────────────────────────────────────────────
-builder.Services.Configure<EmailOptions>(
-    builder.Configuration.GetSection(EmailOptions.SectionName));
+// ── Email ─────────────────────────────────────────────────────────────────────
+// Bound and validated at startup with ValidateOnStart, so a host that cannot send mail
+// refuses to start rather than accepting registrations and dropping every message.
+builder.Services
+    .AddOptions<EmailOptions>()
+    .Bind(builder.Configuration.GetSection(EmailOptions.SectionName))
+    .ValidateOnStart();
 
-if (builder.Environment.IsDevelopment())
+builder.Services.AddSingleton<IValidateOptions<EmailOptions>>(
+    new EmailOptionsValidator(builder.Environment.IsProduction()));
+
+builder.Services.AddSingleton<OtpResendCooldown>();
+builder.Services.AddSingleton<IMicrosoftTokenProvider, MicrosoftTokenProvider>();
+
+builder.Services.AddHttpClient("entra-token").ConfigureHttpClient(
+    client => client.Timeout = TimeSpan.FromSeconds(20));
+
+builder.Services.AddHttpClient("graph-mail").ConfigureHttpClient(
+    client => client.Timeout = TimeSpan.FromSeconds(30));
+
+// One sender, chosen from configuration. There is no fallback: an unreachable Graph or
+// SMTP provider produces an error, never a silent switch to the log.
+builder.Services.AddSingleton<IEmailSender>(provider =>
 {
-    // Development only: when mail is going to the log rather than to a mailbox, echo the
-    // one-time code back in the API response so registration and password reset can be
-    // completed without digging through the log file.
-    //
-    // PostConfigure runs after the section is bound, so UseLogTransport is already set and
-    // the helper can gate on it — outside Development this line does not exist at all,
-    // which is the point. On any other host the code is never in a response body.
-    builder.Services.PostConfigure<EmailOptions>(options => options.EnableCodeRevealForDevelopment());
-}
+    var options = provider.GetRequiredService<IOptions<EmailOptions>>();
+
+    return options.Value.Provider switch
+    {
+        EmailProvider.Graph => ActivatorUtilities.CreateInstance<GraphEmailSender>(provider),
+        EmailProvider.Smtp => ActivatorUtilities.CreateInstance<SmtpEmailSender>(provider),
+        EmailProvider.Log => ActivatorUtilities.CreateInstance<LogEmailSender>(provider),
+        _ => throw new InvalidOperationException(
+            "Email:Provider is not configured. Startup validation should have caught this."),
+    };
+});
+
 builder.Services.Configure<GeminiOptions>(
     builder.Configuration.GetSection(GeminiOptions.SectionName));
 builder.Services.Configure<CookieOptionsConfig>(

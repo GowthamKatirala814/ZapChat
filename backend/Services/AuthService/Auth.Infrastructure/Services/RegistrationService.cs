@@ -1,6 +1,7 @@
 using Auth.Application.Abstractions;
 using Auth.Application.DTOs;
 using Auth.Domain.Documents;
+using Auth.Infrastructure.Email;
 using Microsoft.Extensions.Logging;
 using MongoDB.Driver;
 using ZapChat.Shared.Auth;
@@ -23,6 +24,7 @@ public sealed class RegistrationService : IRegistrationService
     private readonly ITokenService _tokens;
     private readonly IAnonymousNameService _names;
     private readonly IEmailService _email;
+    private readonly OtpResendCooldown _cooldown;
     private readonly IHttpClientFactory _httpClients;
     private readonly ILogger<RegistrationService> _logger;
 
@@ -33,6 +35,7 @@ public sealed class RegistrationService : IRegistrationService
         ITokenService tokens,
         IAnonymousNameService names,
         IEmailService email,
+        OtpResendCooldown cooldown,
         IHttpClientFactory httpClients,
         ILogger<RegistrationService> logger)
     {
@@ -42,6 +45,7 @@ public sealed class RegistrationService : IRegistrationService
         _tokens = tokens;
         _names = names;
         _email = email;
+        _cooldown = cooldown;
         _httpClients = httpClients;
         _logger = logger;
     }
@@ -55,6 +59,18 @@ public sealed class RegistrationService : IRegistrationService
             // confirming it exists is not a meaningful disclosure and a vague error
             // here just traps real users.
             throw new ConflictException("An account with that email address already exists.");
+        }
+
+        // A per-address cooldown, on top of the gateway's per-IP limiter. The gateway
+        // partitions by IP, which does nothing against the same mailbox being targeted
+        // from many addresses — the shape mail bombing actually takes.
+        var pending = await _otps.GetLatestAsync(request.Email, OtpPurpose.Registration, ct);
+
+        if (pending is not null && _cooldown.IsTooSoon(pending.CreatedAt))
+        {
+            throw new RateLimitedException(
+                "A verification code was just sent. Please wait a moment before asking for another.",
+                _cooldown.RetryAfterSeconds(pending.CreatedAt));
         }
 
         // Supersede any earlier unfinished attempt for this address.
@@ -78,42 +94,27 @@ public sealed class RegistrationService : IRegistrationService
 
         try
         {
-            await _email.SendRegistrationOtpAsync(request.Email, code, request.FullName);
+            await _email.SendRegistrationOtpAsync(
+                request.Email, code, request.FullName, (int)OtpLifetime.TotalMinutes, ct);
         }
         catch (Exception ex)
         {
-            // Surfaced rather than swallowed: if the mail never leaves, the user is
-            // stuck on a screen waiting for a code that will not arrive.
-            _logger.LogError(ex, "Failed to send the registration code to {Email}.", request.Email);
+            // The stored code is invalidated before returning. Leaving it live would let
+            // a user who eventually receives a delayed message use a code the API had
+            // already reported as failed, and it keeps the cooldown from blocking their
+            // immediate retry.
+            await _otps.InvalidatePendingAsync(request.Email, OtpPurpose.Registration, ct);
+
+            // EmailService has already logged the provider, endpoint, recipient domain
+            // and failure kind. What the user gets says nothing about any of it.
+            _logger.LogError(ex, "Registration could not be started: the verification email failed.");
+
             throw new DependencyUnavailableException(
-                "We could not send the verification email. Please try again shortly.");
+                "We could not send the verification email just now. Please try again shortly.");
         }
 
-        // Do not claim mail was sent when it was not. With the log transport active
-        // nothing leaves the process, and a user told to check their inbox waits for a
-        // message that will never arrive — which is exactly how this looked when it was
-        // first reported.
-        return new StepResult(true, DescribeDelivery(code));
-    }
-
-    /// <summary>
-    /// What to tell the caller about where their code went.
-    ///
-    /// The code itself is included only on a development host using the log transport;
-    /// see EmailOptions.RevealCodesInResponses.
-    /// </summary>
-    private string DescribeDelivery(string code)
-    {
-        if (_email.RevealsCodes)
-            return $"Development mode — no email was sent. Your verification code is {code}.";
-
-        if (_email.DeliversToLog)
-        {
-            return "No email was sent: this server is using the log transport. " +
-                   "The code is in the auth service log.";
-        }
-
-        return "A 6-digit verification code has been sent to your email.";
+        // Reached only when the provider accepted the message.
+        return new StepResult(true, "We have emailed you a 6-digit verification code.");
     }
 
     public async Task<StepResult> VerifyOtpAsync(

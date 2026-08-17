@@ -1,4 +1,4 @@
-import { CheckCircle2, ChevronLeft } from "lucide-react";
+import { CheckCircle2, ChevronLeft, MailCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ErrorState } from "../../components/feedback";
@@ -7,7 +7,8 @@ import { paths } from "../../config";
 import { authApi } from "../../services/api";
 import { AuthLayout } from "./AuthLayout";
 import { OtpInput } from "./OtpInput";
-import { MIN_PASSWORD_LENGTH } from "./constants";
+import { useResendCountdown } from "./useResendCountdown";
+import { MIN_PASSWORD_LENGTH, OTP_EXPIRY_MINUTES } from "./constants";
 
 /**
  * Password reset — the same three-step shape as registration:
@@ -34,6 +35,8 @@ export function ForgotPasswordPage() {
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
 
+  const { secondsLeft, canResend, start } = useResendCountdown();
+
   async function run(action: () => Promise<void>) {
     setError(null);
     setBusy(true);
@@ -51,6 +54,7 @@ export function ForgotPasswordPage() {
     void run(async () => {
       await authApi.forgotPassword(email.trim());
       setStep("code");
+      start();
     });
   };
 
@@ -143,6 +147,17 @@ export function ForgotPasswordPage() {
 
         {step === "code" && (
           <div className="flex flex-col gap-4">
+            <div className="flex items-start gap-3 p-3.5 rounded-[--radius-DEFAULT] bg-surface-2 border border-line">
+              <MailCheck size={17} className="text-muted shrink-0 mt-0.5" />
+              <div className="text-[13px] text-body">
+                <p className="font-medium">Check your email</p>
+                <p className="text-muted mt-0.5">
+                  If an account exists for <span className="text-body">{email}</span>, a
+                  6-digit code is on its way. It expires in {OTP_EXPIRY_MINUTES} minutes.
+                </p>
+              </div>
+            </div>
+
             <OtpInput value={code} onChange={setCode} disabled={busy} onComplete={submitCode} />
 
             <Button
@@ -155,14 +170,40 @@ export function ForgotPasswordPage() {
               Verify code
             </Button>
 
-            <button
-              type="button"
-              onClick={() => setStep("email")}
-              className="inline-flex items-center gap-1 text-[13px] text-muted hover:text-body self-start"
-            >
-              <ChevronLeft size={14} />
-              Use a different email
-            </button>
+            <div className="flex items-center justify-between gap-3">
+              <button
+                type="button"
+                onClick={() => setStep("email")}
+                className="inline-flex items-center gap-1 text-[13px] text-muted hover:text-body"
+              >
+                <ChevronLeft size={14} />
+                Use a different email
+              </button>
+
+              {/* The countdown is purely local here. The server answers a throttled
+                  reset request with the same sentence as an accepted one — a 429 would
+                  confirm the address has an account — so there is no Retry-After to
+                  read, and the client keeps its own timer. */}
+              <button
+                type="button"
+                onClick={() => {
+                  void run(async () => {
+                    await authApi.forgotPassword(email.trim());
+                    setCode("");
+                    start();
+                  });
+                }}
+                disabled={busy || !canResend}
+                className="text-[13px] text-accent hover:underline disabled:text-faint disabled:no-underline disabled:cursor-not-allowed"
+              >
+                {canResend ? "Resend code" : `Resend in ${secondsLeft}s`}
+              </button>
+            </div>
+
+            <p className="text-[12px] text-faint">
+              Not in your inbox? Check the spam folder. If you never receive a code, the
+              address may not have an account.
+            </p>
           </div>
         )}
 

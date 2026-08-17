@@ -200,43 +200,137 @@ The Vite dev server proxies `/api` and `/hubs` to the gateway, so the browser se
 origin. That is what lets the session cookies be `SameSite=Lax` rather than `SameSite=None`,
 keeping the browser's built-in CSRF protection.
 
-### 4. Sign in
+### 4. Configure email
 
-Registration is self-service. **No email is sent in development** — `dev-env.ps1` sets
-`ZAPCHAT_EMAIL__USELOGTRANSPORT=true`, so verification and password-reset codes never leave
-the process and no SMTP account is needed. Waiting for a message in your inbox is the one
-thing that will not work.
+**ZapChat sends real verification email, locally as well as in production.** There is no
+log-based fallback in the normal flows: if no provider is configured, the Auth service
+refuses to start rather than accepting registrations and dropping every message.
 
-Instead, the code is shown **directly on the verification screen**:
+`zapcg.com` is **Microsoft 365 / Exchange Online** — its MX record points at
+`zapcg-com.mail.protection.outlook.com`. The recommended provider is therefore
+**Microsoft Graph**, which authenticates with OAuth2 client credentials and needs no SMTP
+AUTH. That matters: SMTP AUTH is disabled by default on new Microsoft 365 tenants, is
+commonly disabled by policy on older ones, and Microsoft is deprecating it for client
+submission.
 
-> Development mode — no email was sent. Your verification code is 122516.
+#### One-time setup (Microsoft 365)
 
-It is also written to `logs/Auth.log`, if you prefer to read it there:
+An administrator does this once, in the Azure portal:
 
-```bash
-grep -a "verification code is" logs/Auth.log | tail -1
-```
+1. **Entra ID → App registrations → New registration.** Name it `ZapChat Mail`, single
+   tenant, no redirect URI.
+2. On the overview page, copy the **Directory (tenant) ID** and **Application (client) ID**.
+3. **Certificates & secrets → New client secret.** Copy the **Value** — not the Secret ID —
+   immediately; it is never shown again. Note the expiry and diarise the rotation.
+4. **API permissions → Add a permission → Microsoft Graph → Application permissions →
+   `Mail.Send`**, then **Grant admin consent**. Delegated permission is the wrong kind here;
+   the application sends with no user signed in.
+5. **Restrict which mailbox it can send as.** `Mail.Send` as granted allows sending as *any*
+   mailbox in the tenant. Scope it down with an Exchange application access policy, in
+   Exchange Online PowerShell:
 
-The code only appears in the response when **both** conditions hold: the host is in the
-Development environment *and* the log transport is active. On any other host the response
-says only that the log transport is in use — it never contains the code, because on the
-password-reset path that would turn "forgot password" into "take over any account".
+   ```powershell
+   New-ApplicationAccessPolicy `
+       -AppId <application-client-id> `
+       -PolicyScopeGroupId noreply@zapcg.com `
+       -AccessRight RestrictAccess `
+       -Description "ZapChat may send only as the noreply mailbox"
+   ```
 
-#### Sending real email
+   Skipping this step leaves a credential that can send as anyone in the company.
 
-Set a real sender and turn the log transport off:
+6. Make sure the sender mailbox (`noreply@zapcg.com` or similar) **exists and is licensed**.
+   A shared mailbox works and needs no user licence.
+
+#### Local configuration
 
 ```powershell
-$env:ZAPCHAT_EMAIL__USELOGTRANSPORT = 'false'
-$env:ZAPCHAT_EMAIL__SENDEREMAIL     = 'someone@example.com'
-$env:ZAPCHAT_EMAIL__APPPASSWORD     = '<app password>'
+Copy-Item scripts\dev-secrets.example.ps1 scripts\dev-secrets.ps1
+# fill in TenantId, ClientId, ClientSecret and SenderEmail
 ```
 
-The SMTP host defaults to `smtp.gmail.com:587` (`Email:SmtpHost` / `Email:SmtpPort` in
-`appsettings.json`). A Microsoft 365 sender needs `smtp.office365.com`, and note that most
-tenants now disable SMTP AUTH by default — it has to be enabled for the mailbox by a tenant
-administrator, so this is not purely a configuration change on your side. Delivery failures
-are logged with the host, port and sender that were tried.
+`scripts/dev-secrets.ps1` is git-ignored and is loaded automatically by `dev-env.ps1`. If
+you would rather keep nothing on disk, use user-secrets instead:
+
+```powershell
+cd backend\Services\AuthService\Auth.API
+dotnet user-secrets set "Email:Graph:ClientSecret" "<value>"
+```
+
+Then start the backend as usual. Registering with a real address sends a real message.
+
+#### Verifying it works
+
+Sign in as an administrator and call the diagnostics endpoints. They report configuration
+without ever returning a secret, and the test send goes only to *your own* mailbox — the
+recipient is taken from your token, so the endpoint cannot be used as a relay:
+
+```bash
+curl -sk -b cookies.txt https://localhost:5000/api/auth/admin/email/config
+curl -sk -b cookies.txt -X POST https://localhost:5000/api/auth/admin/email/test
+```
+
+#### SMTP instead of Graph
+
+If your tenant permits SMTP AUTH, or the provider is not Microsoft 365:
+
+```powershell
+$env:ZAPCHAT_EMAIL__PROVIDER       = 'Smtp'
+$env:ZAPCHAT_EMAIL__SMTP__HOST     = 'smtp.office365.com'   # Google Workspace: smtp.gmail.com
+$env:ZAPCHAT_EMAIL__SMTP__PORT     = '587'
+$env:ZAPCHAT_EMAIL__SMTP__SECURITY = 'StartTls'
+$env:ZAPCHAT_EMAIL__SMTP__AUTHMODE = 'Password'             # or 'OAuth2'
+$env:ZAPCHAT_EMAIL__SMTP__PASSWORD = '<app password>'       # keep in dev-secrets.ps1
+```
+
+On Microsoft 365 this additionally requires **Authenticated SMTP** enabled for the sending
+mailbox (Microsoft 365 admin centre → Users → the mailbox → Mail → Manage email apps), and
+security defaults will block basic authentication until an app password is used. `AuthMode
+= OAuth2` reuses the Graph app registration and avoids the password, but still needs
+Authenticated SMTP enabled — OAuth replaces the credential, not the protocol permission.
+
+#### Running the test suites without a mail provider
+
+The automated suites read codes from the service log, so they need a transport that does
+not send:
+
+```powershell
+.\scripts\start-backend.ps1 -EmailToLog
+```
+
+That sets `Email:Provider=Log` for the run. It is refused outright on a Production host, and
+it is not a development default — with it set, no email reaches anyone.
+
+#### Troubleshooting
+
+| Symptom | Cause |
+|---|---|
+| Auth refuses to start, "Email:Provider is not set" | No provider configured. Set one, or use `-EmailToLog` for tests. |
+| `AADSTS700016: Application ... not found in the directory` | Wrong tenant, or the app registration does not exist. |
+| `AADSTS7000215: Invalid client secret` | The Secret **ID** was copied instead of the secret **Value**, or it expired. |
+| Graph returns 403 | `Mail.Send` missing, admin consent not granted, or the application access policy excludes this mailbox. |
+| Graph returns 404 | `Email:SenderEmail` is not a real licensed mailbox in the tenant. |
+| SMTP "authentication failed" | Authenticated SMTP disabled for the mailbox, or security defaults blocking basic auth. |
+| Mail sends but lands in spam | See the DNS note below. |
+
+#### DNS: SPF is missing
+
+`zapcg.com` currently publishes **no SPF record** — only the Microsoft domain-verification
+TXT (`MS=ms79500585`). DKIM *is* configured (`selector1._domainkey.zapcg.com` resolves), and
+there is no DMARC record.
+
+Internal zapcg.com → zapcg.com delivery is unaffected, which covers ZapChat's normal use.
+But mail to external recipients is materially more likely to be treated as spam without SPF.
+Adding it is a DNS change, not an application one:
+
+```
+zapcg.com.  TXT  "v=spf1 include:spf.protection.outlook.com -all"
+```
+
+### 5. Sign in
+
+Register with your work email and enter the six-digit code from the message. Codes expire
+after 10 minutes, are single-use, allow five attempts, and can be resent once a minute.
 
 To make an account an administrator, set `ZAPCHAT_ADMINSETTINGS__ADMINEMAIL` in
 `scripts/dev-env.ps1` before that account's next sign-in.
@@ -277,8 +371,11 @@ Set in `scripts/dev-env.ps1` for development:
 | `ZAPCHAT_JWT__SECRET` | **yes** | HMAC signing key, **identical across all services**. Minimum 32 characters — startup fails without it. |
 | `ZAPCHAT_MONGO__CONNECTIONSTRING` | no | Defaults to `mongodb://localhost:27017`. |
 | `ZAPCHAT_ADMINSETTINGS__ADMINEMAIL` | no | Grants Admin to this address on its next sign-in. |
-| `ZAPCHAT_EMAIL__USELOGTRANSPORT` | no | `true` writes OTP codes to the log instead of sending mail. |
-| `ZAPCHAT_EMAIL__SENDEREMAIL` / `__APPPASSWORD` | no | SMTP credentials when not using the log transport. |
+| `ZAPCHAT_EMAIL__PROVIDER` | **yes** | `Graph`, `Smtp` or `Log`. Auth refuses to start without it; `Log` is refused in Production. |
+| `ZAPCHAT_EMAIL__SENDEREMAIL` | **yes** | The mailbox mail is sent from. Must be authorised by the provider. |
+| `ZAPCHAT_EMAIL__GRAPH__TENANTID` / `__CLIENTID` / `__CLIENTSECRET` | for Graph | Entra app registration. The secret goes in `scripts/dev-secrets.ps1` or user-secrets. |
+| `ZAPCHAT_EMAIL__SMTP__HOST` / `__PORT` / `__SECURITY` / `__AUTHMODE` / `__PASSWORD` | for SMTP | SMTP submission settings. The password is a secret. |
+| `ZAPCHAT_EMAIL__RESENDCOOLDOWNSECONDS` | no | Per-mailbox gap between codes. Defaults to 60. |
 | `ZAPCHAT_GEMINI__APIKEY` | no | AI moderation. Without it the local rule engine still runs and the AI stage reports itself unavailable rather than silently passing everything. |
 | `ZAPCHAT_WEBPUSH__PUBLICKEY` / `__PRIVATEKEY` | no | Web push. Empty disables it; in-app notifications still work. |
 
@@ -369,11 +466,12 @@ Frontend, from `frontend/`:
 
 ## Tests
 
-Three black-box suites drive the running platform through the gateway. Start the backend
-first.
+Four black-box suites drive the running platform through the gateway. Start the backend
+first with `-EmailToLog`, since two of them read one-time codes from the service log.
 
 ```bash
 bash tests/api-e2e.sh          # 70 assertions across every REST feature
+bash tests/email-e2e.sh        # 20 assertions on email delivery and the OTP lifecycle
 ```
 
 ```bash

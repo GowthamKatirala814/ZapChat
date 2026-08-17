@@ -9,29 +9,43 @@ public interface IPasswordHasher
     bool VerifyPassword(string password, string passwordHash);
 }
 
+/// <summary>
+/// Outbound email.
+///
+/// Every method either delivers the message to the configured provider or throws. There
+/// is no "sent, probably" return value, because the caller's next act is to tell a user
+/// their code is on the way — and that must not be said unless it is true.
+/// </summary>
 public interface IEmailService
 {
     /// <summary>
-    /// True when messages are written to the service log instead of being delivered.
+    /// True when the log transport is configured, i.e. nothing is actually delivered.
     ///
-    /// Callers must consult this before telling a user their code "has been sent to
-    /// your email" — with the log transport active nothing is sent anywhere, and a
-    /// message claiming otherwise leaves the user waiting for mail that will never
-    /// arrive.
+    /// Only ever true when Email:Provider is explicitly "Log", which the options
+    /// validator refuses in Production. Used by the diagnostics endpoint; the
+    /// registration and reset flows do not branch on it.
     /// </summary>
     bool DeliversToLog { get; }
 
-    /// <summary>
-    /// True when the one-time code may be echoed back in the API response.
-    ///
-    /// Only ever true on a development host using the log transport. See
-    /// EmailOptions.RevealCodesInResponses for why this needs two gates.
-    /// </summary>
-    bool RevealsCodes { get; }
+    /// <summary>Provider name, for diagnostics. Never a secret.</summary>
+    string ProviderName { get; }
 
-    Task SendPasswordResetOtpAsync(string toEmail, string otpCode, string anonymousName);
-    Task SendRegistrationOtpAsync(string toEmail, string otpCode, string fullName);
-    Task SendAsync(string toEmail, string subject, string htmlBody);
+    /// <summary>Where mail is submitted — host:port or an API endpoint. Never a secret.</summary>
+    string ProviderEndpoint { get; }
+
+    Task SendRegistrationOtpAsync(
+        string toEmail, string otpCode, string fullName, int expiryMinutes,
+        CancellationToken ct = default);
+
+    Task SendPasswordResetOtpAsync(
+        string toEmail, string otpCode, string anonymousName, int expiryMinutes,
+        CancellationToken ct = default);
+
+    /// <summary>
+    /// Sends a message that proves the provider works. Carries no code and no user data,
+    /// so it is safe to trigger from an administrative diagnostic.
+    /// </summary>
+    Task SendDeliveryTestAsync(string toEmail, CancellationToken ct = default);
 }
 
 /// <summary>Issues access tokens. The only place claims are assembled.</summary>

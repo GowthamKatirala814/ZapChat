@@ -19,7 +19,15 @@
 param(
     [switch]$Stop,
     [switch]$SkipBuild,
-    [switch]$ShowWindows
+    [switch]$ShowWindows,
+
+    # Runs the Auth service with Email:Provider=Log, which writes verification codes to
+    # logs/Auth.log instead of sending them.
+    #
+    # For the automated suites, which need to read a code without a mailbox to read it
+    # from. NOT for ordinary development — with this set, no email reaches anyone, which
+    # is the exact failure this flag's predecessor caused by being the default.
+    [switch]$EmailToLog
 )
 
 $ErrorActionPreference = 'Stop'
@@ -53,6 +61,26 @@ ZAPCHAT_JWT__SECRET is not set. Every service refuses to start without it.
 
 Run:
     . .\scripts\dev-env.ps1
+'@
+    return
+}
+
+if ($EmailToLog) {
+    $env:ZAPCHAT_EMAIL__PROVIDER = 'Log'
+    $env:ZAPCHAT_EMAIL__SENDEREMAIL = 'tests@localhost'
+    Write-Host 'Email: LOG TRANSPORT — codes go to logs/Auth.log and NO mail is sent.' -ForegroundColor Yellow
+}
+elseif (-not $env:ZAPCHAT_EMAIL__PROVIDER) {
+    Write-Error @'
+ZAPCHAT_EMAIL__PROVIDER is not set, so the Auth service will refuse to start.
+
+ZapChat sends real verification email. Configure a provider:
+
+    . .\scripts\dev-env.ps1                 # then fill in scripts\dev-secrets.ps1
+
+or, to run the automated test suites without a mail provider:
+
+    .\scripts\start-backend.ps1 -EmailToLog
 '@
     return
 }

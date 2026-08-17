@@ -24,3 +24,17 @@ export const DEPARTMENTS = [
 
 /** Mirrors the server's `StringLength(128, MinimumLength = 8)` policy. */
 export const MIN_PASSWORD_LENGTH = 8;
+
+/**
+ * How long a one-time code stays valid, matching `OtpLifetime` in RegistrationService
+ * and PasswordResetService. Shown to the user so an expired code is an explanation
+ * rather than a surprise.
+ */
+export const OTP_EXPIRY_MINUTES = 10;
+
+/**
+ * Default wait before a code can be resent, matching `Email:ResendCooldownSeconds`.
+ * The server is authoritative and answers a too-early request with Retry-After; this is
+ * the starting value for the local countdown.
+ */
+export const RESEND_COOLDOWN_SECONDS = 60;

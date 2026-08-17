@@ -38,6 +38,7 @@ yarn-error.log*
 .env.local
 .env.*.local
 appsettings.Local.json
+scripts/dev-secrets.ps1
 *.pfx
 *.snk
 

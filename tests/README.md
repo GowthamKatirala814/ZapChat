@@ -1,6 +1,6 @@
 # ZapChat end-to-end tests
 
-Three black-box suites that drive the running platform through the API gateway. They are
+Four black-box suites that drive the running platform through the API gateway. They are
 not unit tests: they exist to answer "does the feature actually work", end to end, against
 real MongoDB data.
 
@@ -9,6 +9,7 @@ real MongoDB data.
 | `api-e2e.sh` | 70 | Does the backend behave correctly? Auth, rooms, messaging, private chat, polls, notifications, reporting, session lifecycle, rate limiting. |
 | `signalr-e2e.mjs` | 25 | Does realtime work? All four hubs with two live clients: delivery, payload shapes, access control, read receipts, reconnection. |
 | `frontend-contract-e2e.mjs` | 66 | Does the frontend still agree with the backend? Route table, DTO fields, `isMine` semantics, `Availability` wrappers, viewer-neutral broadcasts — plus file upload and the whole admin surface, which the other two do not cover. |
+| `email-e2e.sh` | 20 | Does email work, and does it fail honestly? Code lifecycle, attempt limit, token supersession, per-mailbox cooldown with `Retry-After`, enumeration resistance, and — starting its own broken-provider instance — that a failed send returns 503 and never leaks the credential. |
 
 The third suite overlaps the first two on the core flows on purpose: it is checking a
 different failure mode, where both sides work correctly and disagree with each other.
@@ -26,7 +27,18 @@ Then, from the repository root:
 
 ```bash
 bash tests/api-e2e.sh
+bash tests/email-e2e.sh
 ```
+
+Both shell suites read one-time codes from `logs/Auth.log`, so the backend must be started
+with the log transport:
+
+```powershell
+.\scripts\start-backend.ps1 -EmailToLog
+```
+
+With a real mail provider configured the codes go to a mailbox instead, and these two
+suites cannot read them — that is the intended behaviour, not a defect.
 
 ```bash
 cd tests

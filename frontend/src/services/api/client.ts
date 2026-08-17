@@ -138,6 +138,13 @@ export class ApiError {
   readonly fieldErrors?: Record<string, string[]>;
   /** Present on a 422: the moderation category that blocked the content. */
   readonly category?: string;
+  /**
+   * Seconds to wait, from the Retry-After header on a 429.
+   *
+   * Read here rather than at the call site because it is the only piece of a rate-limit
+   * response that lives outside the JSON body.
+   */
+  readonly retryAfterSeconds?: number;
   readonly isNetworkError: boolean;
 
   private constructor(init: {
@@ -147,6 +154,7 @@ export class ApiError {
     traceId?: string;
     fieldErrors?: Record<string, string[]>;
     category?: string;
+    retryAfterSeconds?: number;
     isNetworkError: boolean;
   }) {
     this.status = init.status;
@@ -155,6 +163,7 @@ export class ApiError {
     this.traceId = init.traceId;
     this.fieldErrors = init.fieldErrors;
     this.category = init.category;
+    this.retryAfterSeconds = init.retryAfterSeconds;
     this.isNetworkError = init.isNetworkError;
   }
 
@@ -172,6 +181,7 @@ export class ApiError {
       }
 
       const body = error.response.data;
+      const retryAfter = Number(error.response.headers?.["retry-after"]);
 
       return new ApiError({
         status: error.response.status,
@@ -180,6 +190,7 @@ export class ApiError {
         traceId: body?.traceId,
         fieldErrors: body?.errors,
         category: body?.category,
+        retryAfterSeconds: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter : undefined,
         isNetworkError: false,
       });
     }
@@ -211,6 +222,16 @@ export class ApiError {
   /** A moderation rejection. The composer renders these inline, not as a page error. */
   get isRejectedByModeration() {
     return this.status === 422;
+  }
+
+  /** Throttled, by the gateway's per-IP limiter or a service's own per-resource one. */
+  get isRateLimited() {
+    return this.status === 429;
+  }
+
+  /** The provider or a dependency is down — worth offering a retry. */
+  get isUnavailable() {
+    return this.status === 503;
   }
 }
 

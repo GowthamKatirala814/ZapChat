@@ -1,13 +1,15 @@
-import { CheckCircle2, ChevronLeft } from "lucide-react";
+import { CheckCircle2, ChevronLeft, MailCheck } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { ErrorState } from "../../components/feedback";
 import { Button, Field, Input, Select } from "../../components/ui";
 import { paths } from "../../config";
 import { authApi } from "../../services/api";
+import { ApiError } from "../../services/api";
 import { AuthLayout } from "./AuthLayout";
 import { OtpInput } from "./OtpInput";
-import { BRANCHES, DEPARTMENTS, MIN_PASSWORD_LENGTH } from "./constants";
+import { useResendCountdown } from "./useResendCountdown";
+import { BRANCHES, DEPARTMENTS, MIN_PASSWORD_LENGTH, OTP_EXPIRY_MINUTES } from "./constants";
 
 /**
  * Three-step registration, matching the server exactly:
@@ -37,7 +39,7 @@ export function RegisterPage() {
 
   const [code, setCode] = useState("");
   const [verificationToken, setVerificationToken] = useState("");
-  const [notice, setNotice] = useState("");
+  const { secondsLeft, canResend, start, startFromError } = useResendCountdown();
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -57,14 +59,17 @@ export function RegisterPage() {
   const submitDetails = (event: FormEvent) => {
     event.preventDefault();
     void run(async () => {
-      const result = await authApi.registerInitiate({
+      await authApi.registerInitiate({
         fullName: fullName.trim(),
         email: email.trim(),
         department: department.trim(),
         branch,
       });
-      setNotice(result.message);
+
+      // Reached only when the server actually handed the message to the mail provider —
+      // it throws otherwise, so advancing here does not promise something untrue.
       setStep("code");
+      start();
     });
   };
 
@@ -89,14 +94,26 @@ export function RegisterPage() {
 
   const resend = () =>
     void run(async () => {
-      const result = await authApi.registerInitiate({
-        fullName: fullName.trim(),
-        email: email.trim(),
-        department: department.trim(),
-        branch,
-      });
-      setNotice(result.message);
-      setCode("");
+      try {
+        await authApi.registerInitiate({
+          fullName: fullName.trim(),
+          email: email.trim(),
+          department: department.trim(),
+          branch,
+        });
+
+        setCode("");
+        start();
+      } catch (caught) {
+        // A 429 means the server's own per-mailbox cooldown is still running. Sync the
+        // local timer to its Retry-After rather than showing a red error for something
+        // that is only a matter of waiting.
+        if (ApiError.from(caught)?.isRateLimited) {
+          startFromError(caught);
+          return;
+        }
+        throw caught;
+      }
     });
 
   const passwordProblem =
@@ -219,7 +236,16 @@ export function RegisterPage() {
 
         {step === "code" && (
           <div className="flex flex-col gap-4">
-            {notice && <p className="text-[13px] text-muted">{notice}</p>}
+            <div className="flex items-start gap-3 p-3.5 rounded-[--radius-DEFAULT] bg-success-soft border border-success/25">
+              <MailCheck size={17} className="text-success shrink-0 mt-0.5" />
+              <div className="text-[13px] text-body">
+                <p className="font-medium">Verification email sent</p>
+                <p className="text-muted mt-0.5">
+                  We sent a 6-digit code to <span className="text-body">{email}</span>. It
+                  expires in {OTP_EXPIRY_MINUTES} minutes and can be used once.
+                </p>
+              </div>
+            </div>
 
             <OtpInput value={code} onChange={setCode} disabled={busy} onComplete={submitCode} />
 
@@ -233,7 +259,7 @@ export function RegisterPage() {
               Verify code
             </Button>
 
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-3">
               <button
                 type="button"
                 onClick={() => setStep("details")}
@@ -243,15 +269,22 @@ export function RegisterPage() {
                 Change details
               </button>
 
+              {/* Disabled during the server's per-mailbox cooldown, so the usual
+                  response to "it has not arrived yet" is a wait rather than a 429. */}
               <button
                 type="button"
                 onClick={resend}
-                disabled={busy}
-                className="text-[13px] text-accent hover:underline disabled:opacity-50"
+                disabled={busy || !canResend}
+                className="text-[13px] text-accent hover:underline disabled:text-faint disabled:no-underline disabled:cursor-not-allowed"
               >
-                Resend code
+                {canResend ? "Resend code" : `Resend in ${secondsLeft}s`}
               </button>
             </div>
+
+            <p className="text-[12px] text-faint">
+              Not in your inbox? Check the spam folder — the message comes from an automated
+              address.
+            </p>
           </div>
         )}
 
