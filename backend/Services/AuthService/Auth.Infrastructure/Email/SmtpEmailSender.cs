@@ -80,10 +80,8 @@ public sealed class SmtpEmailSender : IEmailSender
             // include the password, but the message can echo the username, which is fine,
             // while the credential itself must never appear.
             _logger.LogError(
-                "SMTP authentication failed at {Endpoint} as {Username} (auth mode {Mode}). " +
-                "On Microsoft 365 this is usually 'Authenticated SMTP' being disabled for the mailbox, " +
-                "or security defaults blocking basic authentication.",
-                Endpoint, UsernameForLog(), smtp.AuthMode);
+                "SMTP authentication failed at {Endpoint} as {Username} (auth mode {Mode}). {Hint}",
+                Endpoint, UsernameForLog(), smtp.AuthMode, AuthFailureHint());
 
             throw new EmailDeliveryException(
                 EmailFailureKind.Authentication, Name, Endpoint, domain,
@@ -181,4 +179,35 @@ public sealed class SmtpEmailSender : IEmailSender
 
     /// <summary>The username is not a secret, but the password must never reach a log.</summary>
     private string UsernameForLog() => UsernameOrSender();
+
+    /// <summary>
+    /// What an authentication failure usually means, for this host.
+    ///
+    /// The cause differs enough between providers that a generic message sends people
+    /// down the wrong path — a Microsoft 365 hint shown for a Gmail failure had someone
+    /// checking Exchange settings for a problem that was a missing App Password.
+    /// </summary>
+    private string AuthFailureHint()
+    {
+        var host = _options.Smtp.Host;
+
+        if (host.Contains("gmail", StringComparison.OrdinalIgnoreCase) ||
+            host.Contains("google", StringComparison.OrdinalIgnoreCase))
+        {
+            return "For Gmail this is almost always the credential: it must be a 16-character " +
+                   "App Password (Google Account -> Security -> App passwords, which requires " +
+                   "2-Step Verification), not the account password.";
+        }
+
+        if (host.Contains("office365", StringComparison.OrdinalIgnoreCase) ||
+            host.Contains("outlook", StringComparison.OrdinalIgnoreCase))
+        {
+            return "On Microsoft 365 this is usually 'Authenticated SMTP' being disabled for the " +
+                   "mailbox, or security defaults blocking basic authentication. Consider the " +
+                   "Graph provider instead, which needs neither.";
+        }
+
+        return "Check the username and credential, and whether the provider requires an " +
+               "application-specific password.";
+    }
 }

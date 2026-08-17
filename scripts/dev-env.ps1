@@ -25,38 +25,21 @@ $env:ZAPCHAT_MONGO__CONNECTIONSTRING = 'mongodb://localhost:27017'
 
 # ── Email ────────────────────────────────────────────────────────────────────
 # ZapChat sends real verification and password-reset mail, locally as well as in
-# production. There is no log-based fallback in the normal flows: if the provider
-# is not configured, the Auth service refuses to start.
+# production. There is no log-based fallback in the normal flows: if no provider
+# is configured, the Auth service refuses to start.
 #
-# zapcg.com is Microsoft 365 (its MX points at Exchange Online), so 'Graph' is the
-# right provider: it authenticates with OAuth2 client credentials and needs no
-# SMTP AUTH, which new tenants disable by default.
+# LOCAL uses Gmail SMTP, configured in scripts/dev-secrets.ps1 (git-ignored),
+# which is loaded at the end of this file. Mail genuinely leaves the machine.
 #
-#   ZAPCHAT_EMAIL__PROVIDER = Graph | Smtp | Log
+# PRODUCTION uses Microsoft Graph with gowtham.kumar@zapcg.com — see
+# backend/Services/AuthService/Auth.API/appsettings.Production.json. Nothing about
+# Gmail is baked into the production path.
 #
-# 'Log' writes messages to the service log instead of sending them. It exists for
-# the automated suites, is refused on a Production host, and is NOT the way to run
-# the app day to day — with it set, no email reaches anyone.
-$env:ZAPCHAT_EMAIL__PROVIDER = 'Graph'
+# The provider is deliberately NOT set here. dev-secrets.ps1 owns it, so that the
+# committed file never dictates where mail goes and a machine without secrets
+# fails loudly rather than silently picking something.
 
-# The mailbox mail is sent from. Must be a real licensed mailbox that the app
-# registration is permitted to send as.
-$env:ZAPCHAT_EMAIL__SENDEREMAIL = ''
-$env:ZAPCHAT_EMAIL__SENDERNAME = 'ZapChat'
 $env:ZAPCHAT_EMAIL__APPURL = 'http://localhost:5173'
-
-# Microsoft Entra app registration. TenantId and ClientId are not secret; the
-# client secret is — keep it out of this file. See README for the exact setup.
-$env:ZAPCHAT_EMAIL__GRAPH__TENANTID = ''
-$env:ZAPCHAT_EMAIL__GRAPH__CLIENTID = ''
-
-# Alternative: SMTP submission. Requires 'Authenticated SMTP' enabled on the
-# mailbox, which many Microsoft 365 tenants disable.
-#   $env:ZAPCHAT_EMAIL__PROVIDER   = 'Smtp'
-#   $env:ZAPCHAT_EMAIL__SMTP__HOST = 'smtp.office365.com'
-#   $env:ZAPCHAT_EMAIL__SMTP__PORT = '587'
-#   $env:ZAPCHAT_EMAIL__SMTP__SECURITY = 'StartTls'
-#   $env:ZAPCHAT_EMAIL__SMTP__AUTHMODE = 'Password'   # or 'OAuth2'
 
 # ── Optional ─────────────────────────────────────────────────────────────────
 # Bootstraps the Admin role: the account with this email is granted Admin on its
@@ -89,9 +72,16 @@ Write-Host "  JWT      : $(if ($env:ZAPCHAT_JWT__SECRET) { 'set' } else { 'MISSI
 Write-Host "  Env      : $($env:ASPNETCORE_ENVIRONMENT)"
 Write-Host "  Email    : provider=$(if ($env:ZAPCHAT_EMAIL__PROVIDER) { $env:ZAPCHAT_EMAIL__PROVIDER } else { 'NOT SET' }), sender=$(if ($env:ZAPCHAT_EMAIL__SENDEREMAIL) { $env:ZAPCHAT_EMAIL__SENDEREMAIL } else { 'NOT SET' })"
 
-if ($env:ZAPCHAT_EMAIL__PROVIDER -eq 'Graph' -and -not $env:ZAPCHAT_EMAIL__GRAPH__CLIENTSECRET) {
-    Write-Host '  WARNING  : Email:Graph:ClientSecret is not set — the Auth service will refuse to start.' -ForegroundColor Yellow
+if (-not $env:ZAPCHAT_EMAIL__PROVIDER) {
+    Write-Host '  WARNING  : no email provider — the Auth service will refuse to start.' -ForegroundColor Yellow
     Write-Host '             Copy scripts/dev-secrets.example.ps1 to scripts/dev-secrets.ps1 and fill it in.' -ForegroundColor Yellow
+}
+elseif ($env:ZAPCHAT_EMAIL__PROVIDER -eq 'Smtp' -and -not $env:ZAPCHAT_EMAIL__SMTP__PASSWORD) {
+    Write-Host '  WARNING  : Email:Smtp:Password is empty — the Auth service will refuse to start.' -ForegroundColor Yellow
+    Write-Host '             Set the Gmail App Password in scripts/dev-secrets.ps1.' -ForegroundColor Yellow
+}
+elseif ($env:ZAPCHAT_EMAIL__PROVIDER -eq 'Graph' -and -not $env:ZAPCHAT_EMAIL__GRAPH__CLIENTSECRET) {
+    Write-Host '  WARNING  : Email:Graph:ClientSecret is not set — the Auth service will refuse to start.' -ForegroundColor Yellow
 }
 
 Write-Host "  Gemini   : $(if ($env:ZAPCHAT_GEMINI__APIKEY) { 'configured' } else { 'not configured (rules-only moderation)' })"
