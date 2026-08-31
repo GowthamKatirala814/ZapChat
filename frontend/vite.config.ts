@@ -5,19 +5,23 @@ import tailwindcss from '@tailwindcss/vite'
 // https://vite.dev/config/
 export default defineConfig(({ command, mode }) => {
     const env = loadEnv(mode, process.cwd(), 'VITE_')
-
     // Fail the BUILD, not the browser.
     //
     // src/config validates this too, but that check runs when the module is first
-    // evaluated — which is after the bundle has shipped and the page has loaded. A
-    // deployment missing its gateway URL would build cleanly and then break on first
-    // paint for every user. Catching it here turns that into a failed build.
-    if (command === 'build' && !env.VITE_API_URL?.trim()) {
+    // evaluated - after the bundle has shipped and the page has loaded. A deployment
+    // missing its gateway URL would build cleanly and then break on first paint for
+    // every user. Catching it here turns that into a failed build.
+    //
+    // DEFINED-BUT-EMPTY IS VALID and must pass. Empty means "same origin", which is how
+    // local development and any single-origin deployment are configured. Only a
+    // completely absent variable is an error. Testing truthiness instead - as this did
+    // at first - rejects the correct local configuration and fails every build.
+    if (command === 'build' && !Object.prototype.hasOwnProperty.call(env, 'VITE_API_URL')) {
         throw new Error(
-            'VITE_API_URL is not set.\n\n' +
-            'It is the API gateway origin and must be supplied before building for\n' +
-            'production. Copy .env.example to .env.local for local builds, or set it\n' +
-            'in the deployment environment.',
+            'VITE_API_URL is not defined. It is the API gateway origin and must be '
+            + 'supplied before building for production. Set it to an absolute origin, '
+            + 'or to an empty string to use the origin serving the page. Copy '
+            + '.env.example to .env.local for local builds.',
         )
     }
 

@@ -1,8 +1,9 @@
 import { useState, type FormEvent } from "react";
-import { Eye, EyeOff } from "lucide-react";
+import { AlertCircle, Eye, EyeOff } from "lucide-react";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useAuth } from "../../app/providers";
 import { ErrorState } from "../../components/feedback";
+import { ApiError } from "../../services/api";
 import { Button, Field, Input } from "../../components/ui";
 import { paths } from "../../config";
 import { AuthLayout } from "./AuthLayout";
@@ -53,7 +54,7 @@ export function LoginPage() {
       }
     >
       <form onSubmit={handleSubmit} className="flex flex-col gap-4" noValidate>
-        {error != null && <ErrorState error={error} compact />}
+        {error != null && <SignInError error={error} />}
 
         <Field label="Work email" htmlFor="email" required>
           <Input
@@ -105,4 +106,37 @@ export function LoginPage() {
       </form>
     </AuthLayout>
   );
+}
+
+/**
+ * A failed sign-in attempt.
+ *
+ * ErrorState renders a 401 as "Your session has expired", which is right almost
+ * everywhere — a 401 mid-session does mean exactly that. On this form it is actively
+ * misleading: the 401 came from the credentials just submitted, and telling someone their
+ * session expired sends them looking for a problem with the server instead of their
+ * password. So 401 is handled here and everything else falls through to the shared
+ * component.
+ */
+function SignInError({ error }: { error: unknown }) {
+  const api = ApiError.from(error);
+
+  if (api?.isUnauthorized) {
+    return (
+      <div
+        className="flex items-start gap-2.5 p-3 rounded-[--radius-DEFAULT] bg-danger-soft border border-danger/25 text-[13px]"
+        role="alert"
+      >
+        <AlertCircle size={15} className="text-danger shrink-0 mt-0.5" />
+        <div className="min-w-0">
+          <p className="text-body font-medium">Incorrect email or password</p>
+          <p className="text-muted mt-0.5">
+            Check both and try again. Use “Forgot your password?” if you need to reset it.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  return <ErrorState error={error} compact />;
 }

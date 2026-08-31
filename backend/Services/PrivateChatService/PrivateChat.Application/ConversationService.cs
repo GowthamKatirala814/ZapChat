@@ -3,6 +3,7 @@ using PrivateChat.Domain.Documents;
 using Shared.Moderation;
 using ZapChat.Shared.Auth;
 using ZapChat.Shared.Errors;
+using ZapChat.Shared.Realtime;
 using ZapChat.Shared.Results;
 
 namespace PrivateChat.Application;
@@ -13,8 +14,6 @@ public sealed class ConversationService : IConversationService
     private static readonly TimeSpan DeleteWindow = TimeSpan.FromHours(24);
     private const int PreviewLength = 80;
 
-    private static readonly HashSet<string> AllowedReactions =
-        ["\U0001F44D", "❤️", "\U0001F602", "\U0001F62E", "\U0001F622", "\U0001F64F", "\U0001F525", "\U0001F389"];
 
     private readonly IConversationRepository _conversations;
     private readonly IDirectMessageRepository _messages;
@@ -430,7 +429,7 @@ public sealed class ConversationService : IConversationService
     public async Task<DirectMessageDto> ToggleReactionAsync(
         Guid messageId, string emoji, CancellationToken ct = default)
     {
-        if (!AllowedReactions.Contains(emoji))
+        if (!ReactionCatalogue.IsAllowed(emoji))
             throw new ValidationException("That is not an available reaction.");
 
         var message = await _messages.GetByIdAsync(messageId, ct)

@@ -207,7 +207,18 @@ try {
     ok(`MessageRead delivered to the sender for ${receipt.messageIds.length} message(s)`);
 
     // A third party must not be able to join the conversation group.
-    const tokenC = await login('e2e-a-1786710892@zapcg.com').catch(() => null);
+    //
+    // carol is a standing development account, alongside alpha and bravo above. This
+    // previously used a hardcoded address left over from one historical test run
+    // (e2e-a-1786710892@zapcg.com); once the database was reset that account no longer
+    // existed, the login failed, tokenC came back null and this assertion SKIPPED
+    // SILENTLY — the suite still reported all-green with one fewer check than it had.
+    const tokenC = await login('carol@zapcg.com').catch(() => null);
+
+    if (!tokenC) {
+        bad('could not sign in as the third-party fixture (carol@zapcg.com) - run scripts/seed-accounts.sh');
+    }
+
     if (tokenC) {
         const dmC = connect('/hubs/private-chat', tokenC);
         connections.push(dmC);

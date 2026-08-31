@@ -1,7 +1,9 @@
 import { clsx } from "clsx";
-import { Flag, MoreHorizontal, Pencil, Reply, SmilePlus, Trash2 } from "lucide-react";
+import { Flag, MoreHorizontal, Pencil, Reply, Trash2 } from "lucide-react";
 import { useState } from "react";
 import { useDismissable } from "../../lib/hooks";
+import { ReactionPicker } from "./ReactionPicker";
+import type { Reaction } from "../../types/api";
 
 /**
  * The hover toolbar on a message.
@@ -14,12 +16,12 @@ import { useDismissable } from "../../lib/hooks";
  * the moderation queue, and the server rejects it anyway.
  */
 
-const QUICK_REACTIONS = ["👍", "🎉", "❤️", "😄", "👀", "🙏"];
 
 export function MessageActions({
   isMine,
   canEdit,
   isDeleted,
+  reactions,
   onReply,
   onEdit,
   onDelete,
@@ -31,6 +33,8 @@ export function MessageActions({
   /** False once the server's 15-minute edit window has closed. */
   canEdit: boolean;
   isDeleted: boolean;
+  /** Current reactions, so the picker can render the caller's own as pressed. */
+  reactions: Reaction[];
   onReply: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -38,10 +42,8 @@ export function MessageActions({
   onReact: (emoji: string) => void;
   align?: "left" | "right";
 }) {
-  const [showEmoji, setShowEmoji] = useState(false);
   const [showMenu, setShowMenu] = useState(false);
 
-  useDismissable(showEmoji, () => setShowEmoji(false));
   useDismissable(showMenu, () => setShowMenu(false));
 
   // Nothing can be done to a removed message: it has no content to quote, react to or
@@ -57,41 +59,11 @@ export function MessageActions({
         align === "right" ? "right-2" : "left-2",
       )}
     >
-      <div className="relative">
-        <IconButton
-          label="Add reaction"
-          onClick={(e) => {
-            e.stopPropagation();
-            setShowEmoji((v) => !v);
-          }}
-        >
-          <SmilePlus size={15} />
-        </IconButton>
-
-        {showEmoji && (
-          <div
-            className="absolute bottom-full mb-1 right-0 flex gap-0.5 p-1 rounded-[--radius-DEFAULT] bg-surface border border-line shadow-lg zc-enter"
-            onClick={(e) => e.stopPropagation()}
-            role="menu"
-          >
-            {QUICK_REACTIONS.map((emoji) => (
-              <button
-                key={emoji}
-                type="button"
-                role="menuitem"
-                onClick={() => {
-                  onReact(emoji);
-                  setShowEmoji(false);
-                }}
-                className="w-7 h-7 rounded-[--radius-sm] hover:bg-surface-2 text-[15px] leading-none"
-                aria-label={`React with ${emoji}`}
-              >
-                {emoji}
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
+      <ReactionPicker
+        reactions={reactions}
+        onPick={onReact}
+        align={align === "right" ? "right" : "left"}
+      />
 
       <IconButton label="Reply" onClick={onReply}>
         <Reply size={15} />

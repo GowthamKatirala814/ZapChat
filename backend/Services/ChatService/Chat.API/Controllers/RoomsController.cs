@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ZapChat.Shared.Auth;
 using ZapChat.Shared.Results;
+using ZapChat.Shared.Realtime;
 
 namespace Chat.API.Controllers;
 
@@ -24,6 +25,23 @@ public sealed class RoomsController : ControllerBase
     {
         _rooms = rooms;
         _messages = messages;
+    }
+
+    /// <summary>
+    /// The reactions this platform accepts.
+    ///
+    /// Published so the client renders the server's actual list instead of its own copy.
+    /// The two had drifted: the picker offered two emoji the server rejected and omitted
+    /// four it accepted, which is only discoverable by clicking every button.
+    ///
+    /// Static per deployment, so it is cacheable and needs no authentication beyond the
+    /// service default.
+    /// </summary>
+    [HttpGet("reaction-options")]
+    public ActionResult<IReadOnlyList<ReactionCatalogue.Reaction>> ReactionOptions()
+    {
+        Response.Headers.CacheControl = "private, max-age=3600";
+        return Ok(ReactionCatalogue.All);
     }
 
     /// <summary>Rooms this caller may see, with their own unread counts.</summary>

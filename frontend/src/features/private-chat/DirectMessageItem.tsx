@@ -101,6 +101,7 @@ export function DirectMessageItem({
           isMine={mine}
           canEdit={canStillEdit(message.sentAt)}
           isDeleted={isDeleted}
+          reactions={message.reactions}
           align={mine ? "left" : "right"}
           onReply={() => onReply(message)}
           onEdit={() => setEditing(true)}

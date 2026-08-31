@@ -1,3 +1,4 @@
+import { clsx } from "clsx";
 import { ChevronLeft, Hash, Users } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import toast from "react-hot-toast";
@@ -39,7 +40,10 @@ export function RoomView({
   const [replyTo, setReplyTo] = useState<ReplyTarget | null>(null);
   const [reporting, setReporting] = useState<Message | null>(null);
   const [highlighted, setHighlighted] = useState<string | null>(null);
-  const [showMembers, setShowMembers] = useState(false);
+  // Open by default. The panel was previously behind a toggle that started closed and
+  // was `hidden md:flex`, so presence — which the backend fully supports — was invisible
+  // unless someone happened to find the button.
+  const [showMembers, setShowMembers] = useState(true);
 
   const typing = useTypingIndicator("chat", roomId, "roomId");
 
@@ -148,12 +152,18 @@ export function RoomView({
             type="button"
             onClick={() => setShowMembers((v) => !v)}
             aria-pressed={showMembers}
-            className="inline-flex items-center gap-1.5 h-8 px-2.5 rounded-[--radius-sm] text-[12.5px] text-muted hover:bg-surface-2 hover:text-body transition-colors shrink-0"
-            title="Show who is here"
+            className={clsx(
+              "inline-flex items-center gap-1.5 h-8 px-2.5 rounded-[--radius-sm] shrink-0",
+              "text-[12.5px] transition-colors",
+              showMembers
+                ? "bg-accent-soft text-accent-text"
+                : "text-muted hover:bg-surface-2 hover:text-body",
+            )}
+            title={showMembers ? "Hide members" : "Show members"}
           >
             <Users size={15} />
             <span className="zc-tabular">
-              {online}
+              <span className="text-success font-medium">{online}</span>
               <span className="text-faint">/{room.data.memberCount}</span>
             </span>
           </button>
@@ -262,13 +272,38 @@ export function RoomView({
       </div>
 
       {showMembers && (
-        <MembersPanel
-          members={members.data}
-          isLoading={members.isLoading}
-          error={members.error}
-          onRetry={() => void members.refetch()}
-          onClose={() => setShowMembers(false)}
-        />
+        <>
+          {/* Wide screens: a permanent third column. */}
+          <div className="hidden lg:flex min-h-0">
+            <MembersPanel
+              members={members.data}
+              isLoading={members.isLoading}
+              error={members.error}
+              onRetry={() => void members.refetch()}
+            />
+          </div>
+
+          {/* Narrow screens: a drawer, because a third column does not fit. */}
+          <div
+            className="lg:hidden fixed inset-0 z-40 flex justify-end"
+            style={{ background: "var(--zc-overlay)" }}
+            role="presentation"
+            onClick={() => setShowMembers(false)}
+          >
+            <div
+              className="w-[min(300px,85vw)] h-full flex zc-enter"
+              onClick={(event) => event.stopPropagation()}
+            >
+              <MembersPanel
+                members={members.data}
+                isLoading={members.isLoading}
+                error={members.error}
+                onRetry={() => void members.refetch()}
+                onClose={() => setShowMembers(false)}
+              />
+            </div>
+          </div>
+        </>
       )}
 
       {reporting && (

@@ -6,13 +6,37 @@
  * environment without editing source.
  */
 
+/**
+ * Resolves an origin from the environment.
+ *
+ * Three cases, and the middle one is the one that matters:
+ *
+ *   "https://host"  an absolute origin. Requests go straight there.
+ *   ""              SAME ORIGIN. Returns "" so every URL stays relative, which routes
+ *                   through whatever is serving the page — the Vite proxy in dev, the
+ *                   reverse proxy in production.
+ *   undefined       not configured. Falls back in dev; a loud failure in a prod build.
+ *
+ * The empty case used to be indistinguishable from `undefined`, so it fell through to
+ * the localhost fallback and there was no way to ask for the proxy at all. That made the
+ * browser talk cross-site to the gateway, and cross-site requests do not carry the
+ * SameSite=Lax session cookie — so every login appeared to succeed and every request
+ * afterwards came back 401 "session expired".
+ */
 function origin(name: string, value: string | undefined, fallback: string): string {
+  // Explicitly empty means same-origin. Checked before the truthiness test below, which
+  // cannot tell "" from undefined.
+  if (value !== undefined && value.trim() === "") return "";
+
   const trimmed = value?.trim();
   if (trimmed) return trimmed.replace(/\/+$/, "");
 
   if (import.meta.env.PROD) {
     // A production bundle silently falling back to localhost is worse than a loud failure.
-    throw new Error(`${name} is not set. Define it before building for production.`);
+    throw new Error(
+      `${name} is not set. Define it before building for production, ` +
+      `or set it to an empty string to use the origin serving the page.`,
+    );
   }
 
   return fallback;

@@ -118,6 +118,7 @@ export function MessageItem({
           isMine={message.isMine}
           canEdit={canStillEdit(message.sentAt)}
           isDeleted={isDeleted}
+          reactions={message.reactions}
           onReply={() => onReply(message)}
           onEdit={() => setEditing(true)}
           onDelete={() => onDelete(message)}

@@ -1,4 +1,5 @@
 import { clsx } from "clsx";
+import { useState } from "react";
 import { Ban, Check, CheckCheck, FileText, ImageIcon, Trash2 } from "lucide-react";
 import { filesApi } from "../../services/api";
 import { formatBytes, formatDateTime, formatTime } from "../../lib/format";
@@ -81,9 +82,13 @@ export function ReplyQuote({
 /**
  * Reaction pills.
  *
- * `mine` comes from the server, so the pressed state survives a reload — the old UI
- * tracked it in component state and lost it on every refresh. The names tooltip lists
- * anonymous names, which is all the server discloses.
+ * `mine` and `names` both come from the server, so the pressed state survives a reload
+ * and the tooltip lists real reactors rather than a client-side guess. Only anonymous
+ * names are ever available here — the API has no field for anything else.
+ *
+ * Collapses past a threshold. A message that attracts every available reaction would
+ * otherwise push a row of pills wider than the bubble and wrap into a block taller than
+ * the message itself.
  */
 export function ReactionRow({
   reactions,
@@ -94,32 +99,74 @@ export function ReactionRow({
   onToggle: (emoji: string) => void;
   disabled?: boolean;
 }) {
+  const [expanded, setExpanded] = useState(false);
+
   if (reactions.length === 0) return null;
 
+  const LIMIT = 6;
+  const overflowing = !expanded && reactions.length > LIMIT;
+  const shown = overflowing ? reactions.slice(0, LIMIT) : reactions;
+  const hidden = reactions.length - shown.length;
+
   return (
-    <div className="flex flex-wrap gap-1 mt-1.5">
-      {reactions.map((reaction) => (
+    <div className="flex flex-wrap items-center gap-1 mt-1.5">
+      {shown.map((reaction) => (
         <button
           key={reaction.emoji}
           type="button"
           disabled={disabled}
           onClick={() => onToggle(reaction.emoji)}
-          title={reaction.names.join(", ")}
+          title={describeReactors(reaction)}
+          aria-label={describeReactors(reaction)}
           aria-pressed={reaction.mine}
           className={clsx(
-            "inline-flex items-center gap-1 h-6 px-1.5 rounded-[--radius-full] border",
+            "inline-flex items-center gap-1 h-6 pl-1.5 pr-2 rounded-[--radius-full] border",
             "text-[12px] leading-none transition-colors disabled:opacity-60",
             reaction.mine
-              ? "bg-accent-soft border-accent/40 text-accent-text font-medium"
+              ? "bg-accent-soft border-accent/45 text-accent-text font-semibold"
               : "bg-surface-2 border-line hover:border-line-strong text-muted",
           )}
         >
-          <span aria-hidden>{reaction.emoji}</span>
+          <span className="text-[13px]" aria-hidden>{reaction.emoji}</span>
           <span className="zc-tabular">{reaction.count}</span>
         </button>
       ))}
+
+      {overflowing && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="h-6 px-2 rounded-[--radius-full] border border-line bg-surface-2 text-[11.5px] text-muted hover:text-body hover:border-line-strong transition-colors"
+          title={`Show ${hidden} more reaction${hidden === 1 ? "" : "s"}`}
+        >
+          +{hidden}
+        </button>
+      )}
     </div>
   );
+}
+
+/**
+ * The tooltip text for a pill.
+ *
+ * Truncated past a handful of names: the browser renders a title attribute as a single
+ * unwrapped line, so fifty names become a tooltip wider than the screen.
+ */
+function describeReactors(reaction: Reaction): string {
+  const { names, count, emoji, mine } = reaction;
+
+  if (names.length === 0) {
+    return `${count} reacted with ${emoji}`;
+  }
+
+  const MAX = 8;
+  const listed = names.slice(0, MAX).join(", ");
+  const rest = names.length - MAX;
+  const who = rest > 0 ? `${listed} and ${rest} more` : listed;
+
+  return mine
+    ? `${who} reacted with ${emoji} — click to remove yours`
+    : `${who} reacted with ${emoji}`;
 }
 
 // ── Attachments ───────────────────────────────────────────────────────────────
